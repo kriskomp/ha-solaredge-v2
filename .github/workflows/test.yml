@@ -36,7 +36,11 @@ jobs:
         run: |
           set -o pipefail
           pytest -ra --strict-markers -p no:cacheprovider tests/ 2>&1 | tee pytest.log || {
-            echo "::error title=pytest::$(tail -c 20000 pytest.log | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"; exit 1; }
+            enc() { sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g'; }
+            echo "::error title=pytest summary::$(grep -E '^(FAILED|ERROR)|passed|failed' pytest.log | tail -n 20 | enc)"
+            echo "::error title=pytest log warnings::$(grep -E 'WARNING|ERROR|Error|Exception|raise ' pytest.log | grep -v 'custom integration' | tail -n 40 | cut -c1-400 | enc)"
+            echo "::error title=pytest tail::$(tail -c 3500 pytest.log | enc)"
+            exit 1; }
           echo "::notice title=pytest::$(tail -n 5 pytest.log | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"
       - name: Lint
         if: always()

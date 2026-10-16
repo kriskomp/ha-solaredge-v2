@@ -13,8 +13,6 @@ from collections.abc import Mapping
 import secrets
 from typing import Any
 
-import voluptuous as vol
-
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
@@ -37,6 +35,7 @@ from homeassistant.helpers.selector import (
     TextSelectorType,
 )
 from homeassistant.util import dt as dt_util
+import voluptuous as vol
 
 from .api import (
     DEFAULT_REDIRECT_URI,

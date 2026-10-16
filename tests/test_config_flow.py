@@ -13,7 +13,6 @@ from custom_components.solaredge_v2.const import (
     CONF_TOKEN,
     DOMAIN,
 )
-
 from tests.helpers import load
 
 TOKEN_URL = "https://monitoringapi.solaredge.com/v2/oauth2/token"

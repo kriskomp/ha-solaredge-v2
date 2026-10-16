@@ -4,7 +4,6 @@ from datetime import date
 
 from custom_components.solaredge_v2.api.models import Series, parse_telemetry
 from custom_components.solaredge_v2.state import SiteState, Totals, summarize_inverters
-
 from tests.helpers import load
 
 TODAY = date(2026, 10, 16)

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import voluptuous as vol
-
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
@@ -11,6 +9,7 @@ from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.update_coordinator import UpdateFailed
+import voluptuous as vol
 
 from .const import (
     ATTR_CONFIG_ENTRY_ID,

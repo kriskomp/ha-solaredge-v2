@@ -22,6 +22,7 @@ from .const import (
     STORAGE_VERSION,
 )
 from .coordinator import SolarEdgeConfigEntry, SolarEdgeCoordinator
+from .migrate import async_migrate_from_core
 
 PLATFORMS = [Platform.SENSOR]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -79,7 +80,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SolarEdgeConfigEntry) ->
     entry.runtime_data = coordinator
 
     meta = coordinator.metadata
-    dr.async_get(hass).async_get_or_create(
+    device = dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, str(entry.data[CONF_SITE_ID]))},
         manufacturer=MANUFACTURER,
@@ -88,6 +89,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: SolarEdgeConfigEntry) ->
         entry_type=dr.DeviceEntryType.SERVICE,
         configuration_url="https://monitoring.solaredge.com/",
     )
+    # Successor of the built-in integration: take over its sensors (same entity_id,
+    # same history) before our sensors are created.
+    await async_migrate_from_core(hass, entry, device.id)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_entry_updated))

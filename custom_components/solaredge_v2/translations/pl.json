@@ -24,6 +24,13 @@
         "data": {
           "redirect_url": "Adres z paska przeglądarki"
         }
+      },
+      "migrate": {
+        "title": "Przejęcie sensorów wbudowanej integracji SolarEdge",
+        "description": "Dla tej instalacji działa wbudowana integracja SolarEdge. Ta integracja może przejąć jej sensory z **tymi samymi ID encji, nazwami, obszarami i całą historią** (wykresy, statystyki, panel Energia):\n\n{entities}\n\nWbudowana integracja zostanie **wyłączona** (nie usunięta) - jej API v1 i tak przestaje działać w listopadzie. Jeśli Naprawy zaproponują usunięcie starych statystyk - nie usuwaj.",
+        "data": {
+          "migrate": "Przejmij te sensory razem z historią"
+        }
       }
     },
     "error": {
@@ -183,6 +190,10 @@
     "consent_expiring": {
       "title": "Zgoda SolarEdge wkrótce wygaśnie",
       "description": "24-miesięczna zgoda Site Access kończy się {date}. Zatwierdź dostęp ponownie przed tą datą."
+    },
+    "core_migrated": {
+      "title": "Przejęto sensory SolarEdge",
+      "description": "Te sensory należą teraz do SolarEdge Monitoring API v2 i zachowały historię: {entities}.\n\nWbudowana integracja SolarEdge została wyłączona. Gdy wszystko działa, możesz ją usunąć (Ustawienia > Urządzenia i usługi). Jeśli Naprawy zaproponują usunięcie statystyk starych sensorów - nie usuwaj."
     }
   },
   "services": {

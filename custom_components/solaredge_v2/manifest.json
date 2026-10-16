@@ -10,5 +10,5 @@
   "issue_tracker": "https://github.com/kriskomp/ha-solaredge-v2/issues",
   "loggers": ["custom_components.solaredge_v2"],
   "requirements": [],
-  "version": "0.1.0"
+  "version": "0.2.0"
 }

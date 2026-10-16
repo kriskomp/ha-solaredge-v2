@@ -73,6 +73,17 @@ miesiąca, w którym resetują się kredyty (opcja *billing day*).
 Dlaczego tak, a nie przez wbudowany mechanizm OAuth w HA? SolarEdge nie odsyła parametru
 `state`, którego wymaga wbudowany przepływ OAuth w Home Assistant. Sprawdzone 16.10.2026.
 
+### Przejście z wbudowanej integracji `solaredge`
+
+Jeśli dla tej samej instalacji działa wbudowana integracja SolarEdge (API v1), kreator zaproponuje
+**przejęcie jej sensorów**: aktualna moc, energia dziś, w tym miesiącu, w tym roku i całkowita.
+
+Przejęte encje zachowują **to samo `entity_id`, nazwę, obszar, jednostkę i całą historię**
+(wykresy, statystyki, panel Energia). Dashboardy i automatyzacje działają dalej bez zmian.
+
+Wbudowana integracja zostaje **wyłączona**, nie usunięta. Usuń ją ręcznie, gdy wszystko działa.
+Jeśli *Naprawy* zaproponują usunięcie statystyk starych sensorów, nie zgadzaj się.
+
 ### 3. Opcje
 
 *Konfiguruj* na integracji: tryb pracy, grupy sensorów, limit miesięczny, dzień resetu cyklu,

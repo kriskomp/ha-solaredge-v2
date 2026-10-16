@@ -122,3 +122,48 @@ async def test_first_poll_after_install(
     # setup call + telemetry + month baseline + previous years
     assert coordinator.ledger.used >= 4
     assert coordinator.state.totals.base_day == TODAY
+
+
+async def test_takes_over_builtin_sensors_with_their_entity_ids(
+    hass: HomeAssistant,
+    hass_storage: dict[str, Any],
+    aioclient_mock: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    freezer.move_to(NOW)
+    core = MockConfigEntry(domain="solaredge", data={"site_id": "1234567", "api_key": "x"})
+    core.add_to_hass(hass)
+    registry = er.async_get(hass)
+    for key in ("current_power", "lifetime_energy"):
+        registry.async_get_or_create(
+            "sensor",
+            "solaredge",
+            f"1234567_{key}",
+            config_entry=core,
+            suggested_object_id=f"solaredge_{key}",
+            unit_of_measurement="W" if key == "current_power" else "Wh",
+        )
+    entry = _entry(migrate_from=core.entry_id)
+    entry.add_to_hass(hass)
+    hass_storage[f"{DOMAIN}.{entry.entry_id}"] = {
+        "version": 1,
+        "minor_version": 1,
+        "key": f"{DOMAIN}.{entry.entry_id}",
+        "data": _cached_state(NOW - timedelta(minutes=5)),
+    }
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    lifetime = registry.async_get("sensor.solaredge_lifetime_energy")
+    assert lifetime.platform == DOMAIN
+    assert lifetime.config_entry_id == entry.entry_id
+    assert registry.async_get("sensor.solaredge_current_power").platform == DOMAIN
+    # Same entity_id, still in Wh, value from the new integration.
+    state = hass.states.get("sensor.solaredge_lifetime_energy")
+    assert state.attributes["unit_of_measurement"] == "Wh"
+    assert float(state.state) == 19_711_733.0 + 4_943_860.0 + 8_843.0
+    assert hass.states.get("sensor.solaredge_current_power").state == "2427.0"
+    assert hass.config_entries.async_get_entry(core.entry_id).disabled_by is not None
+    assert "migrate_from" not in entry.data
+    assert aioclient_mock.call_count == 0

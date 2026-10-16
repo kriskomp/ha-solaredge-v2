@@ -24,6 +24,13 @@
         "data": {
           "redirect_url": "Address from the browser's address bar"
         }
+      },
+      "migrate": {
+        "title": "Take over the built-in SolarEdge sensors",
+        "description": "The built-in SolarEdge integration is set up for this site. This integration can take over its sensors with the **same entity IDs, names, areas and full history** (graphs, statistics, Energy dashboard):\n\n{entities}\n\nThe built-in integration will be **disabled** (not deleted) - its API v1 stops working in November anyway. Do not delete the old statistics if Repairs offers it.",
+        "data": {
+          "migrate": "Take over these sensors and their history"
+        }
       }
     },
     "error": {
@@ -183,6 +190,10 @@
     "consent_expiring": {
       "title": "SolarEdge consent expires soon",
       "description": "The 24-month Site Access consent ends on {date}. Re-authorize the integration (Settings > Devices & services > SolarEdge Monitoring API v2 > Reconfigure / Re-authenticate) before then."
+    },
+    "core_migrated": {
+      "title": "SolarEdge sensors taken over",
+      "description": "These sensors now belong to SolarEdge Monitoring API v2 and keep their history: {entities}.\n\nThe built-in SolarEdge integration was disabled. Once everything looks right you can delete it (Settings > Devices & services). If Repairs offers to delete statistics of the old sensors, do not."
     }
   },
   "services": {

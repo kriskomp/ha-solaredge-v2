@@ -18,6 +18,8 @@ CONF_REDIRECT_URI: Final = "redirect_uri"
 CONF_TOKEN: Final = "token"
 CONF_GRANTED_AT: Final = "granted_at"
 CONF_INITIAL: Final = "initial"  # site body + calls spent by the setup flow
+CONF_MIGRATE_FROM: Final = "migrate_from"  # built-in solaredge entry to take over
+CORE_DOMAIN: Final = "solaredge"
 
 # Options
 CONF_POLL_MODE: Final = "poll_mode"
@@ -43,6 +45,7 @@ POWER_STALE: Final = timedelta(minutes=60)
 
 ISSUE_CREDITS: Final = "credits_exhausted"
 ISSUE_CONSENT: Final = "consent_expiring"
+ISSUE_MIGRATED: Final = "core_migrated"
 
 SERVICE_SET_CREDITS: Final = "set_credits_used"
 SERVICE_REFRESH: Final = "refresh"

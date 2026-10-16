@@ -56,6 +56,7 @@ from .const import (
     CONF_BILLING_DAY,
     CONF_GRANTED_AT,
     CONF_INITIAL,
+    CONF_MIGRATE_FROM,
     CONF_MIN_INTERVAL,
     CONF_MONTHLY_CREDITS,
     CONF_OVERVIEW,
@@ -71,8 +72,10 @@ from .const import (
     MIN_INTERVAL_FLOOR,
 )
 from .coordinator import Options, default_billing_day, options_preview
+from .migrate import core_entry_for_site, migratable_entities
 
 CONF_REDIRECT_URL = "redirect_url"
+CONF_MIGRATE = "migrate"
 CONF_SITE_ID_INPUT = "site_id"
 
 STEP_USER_SCHEMA = vol.Schema(
@@ -107,6 +110,10 @@ class SolarEdgeConfigFlow(ConfigFlow, domain=DOMAIN):
         self._redirect_uri = DEFAULT_REDIRECT_URI
         self._state = secrets.token_urlsafe(16)
         self._need_site_id = False
+        self._title = ""
+        self._data: dict[str, Any] = {}
+        self._options: dict[str, Any] = {}
+        self._core_entry_id = ""
 
     @staticmethod
     @callback
@@ -186,18 +193,25 @@ class SolarEdgeConfigFlow(ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(site_id)
                 self._abort_if_unique_id_configured()
                 now = dt_util.utcnow()
+                self._title = str(site.get("name") or f"SolarEdge {site_id}")
+                self._data = {
+                    CONF_CLIENT_ID: self._client_id,
+                    CONF_CLIENT_SECRET: self._client_secret,
+                    CONF_REDIRECT_URI: self._redirect_uri,
+                    CONF_SITE_ID: site_id,
+                    CONF_TOKEN: token.as_dict(),
+                    CONF_GRANTED_AT: now.isoformat(),
+                    CONF_INITIAL: {"site": site, "calls": calls},
+                }
+                self._options = {
+                    CONF_BILLING_DAY: now.astimezone(dt_util.get_default_time_zone()).day
+                }
+                core = core_entry_for_site(self.hass, site_id)
+                if core is not None and migratable_entities(self.hass, site_id):
+                    self._core_entry_id = core.entry_id
+                    return await self.async_step_migrate()
                 return self.async_create_entry(
-                    title=str(site.get("name") or f"SolarEdge {site_id}"),
-                    data={
-                        CONF_CLIENT_ID: self._client_id,
-                        CONF_CLIENT_SECRET: self._client_secret,
-                        CONF_REDIRECT_URI: self._redirect_uri,
-                        CONF_SITE_ID: site_id,
-                        CONF_TOKEN: token.as_dict(),
-                        CONF_GRANTED_AT: now.isoformat(),
-                        CONF_INITIAL: {"site": site, "calls": calls},
-                    },
-                    options={CONF_BILLING_DAY: now.astimezone(dt_util.get_default_time_zone()).day},
+                    title=self._title, data=self._data, options=self._options
                 )
         return self.async_show_form(
             step_id="authorize",
@@ -207,6 +221,22 @@ class SolarEdgeConfigFlow(ConfigFlow, domain=DOMAIN):
                 "url": authorize_url(self._client_id, self._redirect_uri, self._state),
                 "redirect": self._redirect_uri,
             },
+        )
+
+    async def async_step_migrate(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Offer to take over the built-in integration's sensors and their history."""
+        if user_input is not None:
+            data = dict(self._data)
+            if user_input.get(CONF_MIGRATE):
+                data[CONF_MIGRATE_FROM] = self._core_entry_id
+            return self.async_create_entry(title=self._title, data=data, options=self._options)
+        entities = migratable_entities(self.hass, str(self._data[CONF_SITE_ID]))
+        return self.async_show_form(
+            step_id="migrate",
+            data_schema=vol.Schema({vol.Required(CONF_MIGRATE, default=True): BooleanSelector()}),
+            description_placeholders={"entities": "\n".join(f"- `{e}`" for e in entities)},
         )
 
     async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> ConfigFlowResult:

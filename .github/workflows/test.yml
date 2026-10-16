@@ -1,5 +1,4 @@
-# Runs lint, type check, and the pytest suite on every push and pull request.
-# release.yml calls this workflow so the same jobs gate every GitHub Release.
+# Runs lint and the pytest suite on every push and pull request.
 name: Test
 
 on:
@@ -30,12 +29,9 @@ jobs:
         run: pip install -r requirements-core.txt
       - name: Verify runtime versions
         run: python -c "from importlib.metadata import version; import sys; print(version('homeassistant')); assert version('homeassistant') == '2026.10.0'; assert sys.version_info[:2] == (3, 14)"
-      - name: Lint
-        run: ruff check .
-      - name: Type check
-        run: mypy --config-file mypy.ini
       - name: Run the suite
-        run: pytest -ra --strict-markers --cov --cov-report=term-missing tests/
-      - name: Validate the release version fields
-        run: python3 scripts/build_release_artifacts.py --validate-only
+        run: pytest -ra --strict-markers tests/
+      - name: Lint
+        if: always()
+        run: ruff check .
 

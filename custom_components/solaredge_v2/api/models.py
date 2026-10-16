@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
@@ -146,11 +146,14 @@ class SiteMetadata:
     last_update_time: datetime | None
     activation_status: str | None
     timezone: str | None
+    latitude: float | None = None
+    longitude: float | None = None
 
     @classmethod
     def from_api(cls, data: dict[str, Any]) -> SiteMetadata:
         """Build from the site metadata body."""
         location = data.get("location")
+        loc = location if isinstance(location, dict) else {}
         return cls(
             site_id=int(data["siteId"]),
             name=str(data.get("name") or data["siteId"]),
@@ -158,7 +161,9 @@ class SiteMetadata:
             installation_date=parse_datetime(data.get("installationDate")),
             last_update_time=parse_datetime(data.get("lastUpdateTime")),
             activation_status=data.get("activationStatus"),
-            timezone=location.get("timezone") if isinstance(location, dict) else None,
+            timezone=loc.get("timezone"),
+            latitude=_float(loc.get("latitude")),
+            longitude=_float(loc.get("longitude")),
         )
 
 
@@ -254,7 +259,7 @@ class Alert:
         )
 
 
-type Telemetry = dict[str, dict[str, Series]]
+Telemetry = dict[str, dict[str, Series]]
 """Serial number to metric name (as the API spells it) to series."""
 
 
@@ -270,18 +275,3 @@ def parse_telemetry(data: Any, key: str) -> Telemetry:
                 name: Series.from_api(series) for name, series in metrics.items()
             }
     return result
-
-
-@dataclass(slots=True)
-class SiteData:
-    """Everything one coordinator refresh knows about a site."""
-
-    metadata: SiteMetadata
-    devices: list[Device] = field(default_factory=list)
-    overview: SiteOverview | None = None
-    power: Series | None = None
-    lifetime_energy: float | None = None
-    open_alerts: list[Alert] | None = None
-    inverters: Telemetry = field(default_factory=dict)
-    meters: Telemetry = field(default_factory=dict)
-    storage: Telemetry = field(default_factory=dict)

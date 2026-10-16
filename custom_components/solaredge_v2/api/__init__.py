@@ -1,50 +1,62 @@
-"""SolarEdge Monitoring API v2 client owned by this integration."""
+"""SolarEdge Monitoring API v2 client (no Home Assistant imports)."""
 
-from .auth import ApiKeyAuth, AuthProvider, BearerTokenAuth
-from .client import BASE_URL, SolarEdgeClient
+from .client import BASE_URL, SolarEdgeClient, instant, window
 from .exceptions import (
     SolarEdgeAuthenticationError,
     SolarEdgeConnectionError,
     SolarEdgeCreditLimitError,
     SolarEdgeError,
     SolarEdgeForbiddenError,
+    SolarEdgeOAuthError,
     SolarEdgeRateLimitError,
     SolarEdgeResponseError,
 )
 from .models import (
     Alert,
     Device,
-    DeviceType,
     Sample,
     Series,
-    SiteData,
     SiteMetadata,
     SiteOverview,
-    SiteSummary,
     Telemetry,
+    parse_telemetry,
+)
+from .oauth import (
+    DEFAULT_REDIRECT_URI,
+    RedirectParseError,
+    TokenSet,
+    authorize_url,
+    exchange_code,
+    parse_redirect,
+    refresh_tokens,
 )
 
 __all__ = [
     "BASE_URL",
+    "DEFAULT_REDIRECT_URI",
     "Alert",
-    "ApiKeyAuth",
-    "AuthProvider",
-    "BearerTokenAuth",
     "Device",
-    "DeviceType",
+    "RedirectParseError",
     "Sample",
     "Series",
-    "SiteData",
     "SiteMetadata",
     "SiteOverview",
-    "SiteSummary",
     "SolarEdgeAuthenticationError",
     "SolarEdgeClient",
     "SolarEdgeConnectionError",
     "SolarEdgeCreditLimitError",
     "SolarEdgeError",
     "SolarEdgeForbiddenError",
+    "SolarEdgeOAuthError",
     "SolarEdgeRateLimitError",
     "SolarEdgeResponseError",
     "Telemetry",
+    "TokenSet",
+    "authorize_url",
+    "exchange_code",
+    "instant",
+    "parse_redirect",
+    "parse_telemetry",
+    "refresh_tokens",
+    "window",
 ]

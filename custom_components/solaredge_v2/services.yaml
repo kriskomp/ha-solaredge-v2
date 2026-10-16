@@ -1,0 +1,19 @@
+set_credits_used:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: solaredge_v2
+    used:
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 1000000
+          mode: box
+refresh:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: solaredge_v2

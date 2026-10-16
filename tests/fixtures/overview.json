@@ -1,3 +1,0 @@
-{"siteId": 1234567,
- "production": {"total": 18.01, "unit": "KWH", "toSelfConsumption": 9.98, "toStorage": 7.96, "toGrid": 0.07},
- "consumption": {"total": 20410, "unit": "WH", "fromPv": 9980, "fromStorage": 10010, "fromGrid": 420}}

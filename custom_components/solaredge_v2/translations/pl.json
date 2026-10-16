@@ -1,0 +1,214 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Dane aplikacji SolarEdge",
+        "description": "Utwórz aplikację **Site Access** w [konsoli deweloperskiej SolarEdge]({console}) z zakresami SITE_DATA i DEVICE_DATA. Jako Redirect URL zarejestruj `http://localhost/callback` (ten adres nie musi istnieć) i wpisz tutaj Client ID oraz Client Secret.",
+        "data": {
+          "client_id": "Client ID",
+          "client_secret": "Client Secret",
+          "redirect_uri": "Redirect URL zarejestrowany w konsoli"
+        }
+      },
+      "authorize": {
+        "title": "Zatwierdź dostęp",
+        "description": "1. [Otwórz stronę zgody SolarEdge]({url}), zaloguj się kontem mySolarEdge i kliknij **Approve**.\n2. Przeglądarka otworzy `{redirect}?code=...&site_id=...` i pokaże błąd połączenia - tak ma być.\n3. Skopiuj **cały adres** z paska przeglądarki i wklej poniżej. Kod jest ważny krótko.",
+        "data": {
+          "redirect_url": "Adres z paska przeglądarki",
+          "site_id": "Site ID"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Ponowne zatwierdzenie dostępu",
+        "description": "SolarEdge odrzucił zapisany token (wygasa po 30 dniach nieużywania albo po końcu 24-miesięcznej zgody).\n\n1. [Otwórz stronę zgody SolarEdge]({url}) i kliknij **Approve**.\n2. Wklej cały adres, na który trafi przeglądarka (`{redirect}?code=...`).",
+        "data": {
+          "redirect_url": "Adres z paska przeglądarki"
+        }
+      }
+    },
+    "error": {
+      "invalid_redirect": "W wklejonym tekście nie ma kodu autoryzacji.",
+      "site_id_missing": "W adresie brak site_id - wpisz Site ID widoczne na stronie zgody.",
+      "invalid_code": "SolarEdge odrzucił kod (wygasł, został już użyty albo Client Secret / Redirect URL się nie zgadzają). Otwórz stronę zgody ponownie.",
+      "no_site_access": "Te dane nie dają dostępu do tej instalacji.",
+      "cannot_connect": "Brak połączenia z SolarEdge."
+    },
+    "abort": {
+      "already_configured": "Ta instalacja jest już skonfigurowana.",
+      "reauth_successful": "Dostęp odnowiony.",
+      "wrong_site": "Zatwierdzono inną instalację niż skonfigurowana."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Odpytywanie i sensory",
+        "description": "Wykorzystane kredyty w tym cyklu: **{used} / {limit}**. Jeden odczyt w ciągu dnia kosztuje **{calls_per_poll}** kredyt(y), dane dobowe ok. **{daily_fixed}** kredytu dziennie.\n\nPrzy obecnych ustawieniach: tryb stały - odczyt co **{fixed} min**, tryb adaptacyjny - teraz co **{adaptive} min**. Prognoza zużycia na koniec cyklu: **{projected}**.\n\nIm więcej grup włączysz, tym rzadziej integracja może odczytywać dane w tym samym limicie.",
+        "data": {
+          "poll_mode": "Tryb odpytywania",
+          "totals": "Energia w tym miesiącu / roku / całkowita (1 kredyt dziennie)",
+          "alerts": "Otwarte alerty (1 kredyt dziennie)",
+          "overview": "Zużycie, import, eksport, autokonsumpcja - tylko instalacje z licznikiem (+1 kredyt na odczyt)",
+          "storage": "Magazyn energii (+1 kredyt na odczyt, eksperymentalne)",
+          "monthly_credits": "Miesięczny limit kredytów planu",
+          "billing_day": "Dzień miesiąca, w którym zaczyna się cykl kredytów (Dashboard w portalu deweloperskim)",
+          "reserve_percent": "Rezerwa niewykorzystywana",
+          "min_interval": "Najkrótszy dozwolony interwał"
+        }
+      },
+      "confirm": {
+        "title": "Potwierdzenie",
+        "description": "Przy tych ustawieniach:\n\n- tryb stały: odczyt co **{fixed} min** (dobrany pod najdłuższy dzień roku)\n- tryb adaptacyjny: teraz odczyt co **{adaptive} min**\n- jeden odczyt kosztuje **{calls_per_poll}** kredyt(y); dane dobowe ok. **{daily_fixed}** dziennie\n- wykorzystane kredyty: **{used} / {limit}**, prognoza na koniec cyklu: **{projected}**\n\nZatwierdź, aby zapisać."
+      }
+    }
+  },
+  "selector": {
+    "poll_mode": {
+      "options": {
+        "fixed": "Stały - jeden interwał przez cały rok, dobrany pod najdłuższy dzień",
+        "adaptive": "Adaptacyjny - pozostałe kredyty rozkładane na pozostałe godziny dnia"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "current_power": {
+        "name": "Aktualna moc"
+      },
+      "energy_today": {
+        "name": "Energia dziś"
+      },
+      "peak_power_today": {
+        "name": "Szczyt mocy dziś"
+      },
+      "energy_this_month": {
+        "name": "Energia w tym miesiącu"
+      },
+      "energy_this_year": {
+        "name": "Energia w tym roku"
+      },
+      "lifetime_energy": {
+        "name": "Energia całkowita"
+      },
+      "open_alerts": {
+        "name": "Otwarte alerty"
+      },
+      "consumption_today": {
+        "name": "Zużycie dziś"
+      },
+      "self_consumption_today": {
+        "name": "Autokonsumpcja dziś"
+      },
+      "export_today": {
+        "name": "Eksport dziś"
+      },
+      "import_today": {
+        "name": "Import dziś"
+      },
+      "battery_state_of_energy": {
+        "name": "Poziom naładowania magazynu"
+      },
+      "battery_charge_power": {
+        "name": "Moc ładowania magazynu"
+      },
+      "battery_discharge_power": {
+        "name": "Moc rozładowania magazynu"
+      },
+      "credits_used": {
+        "name": "Wykorzystane kredyty API"
+      },
+      "credits_remaining": {
+        "name": "Pozostałe kredyty API"
+      },
+      "credits_projected": {
+        "name": "Prognoza kredytów API"
+      },
+      "credit_cycle_end": {
+        "name": "Reset cyklu kredytów"
+      },
+      "poll_interval": {
+        "name": "Interwał odczytu"
+      },
+      "last_poll": {
+        "name": "Ostatni odczyt"
+      },
+      "next_poll": {
+        "name": "Następny odczyt"
+      },
+      "data_time": {
+        "name": "Czas danych"
+      },
+      "consent_expires": {
+        "name": "Wygaśnięcie zgody"
+      },
+      "ac_voltage": {
+        "name": "Napięcie AC"
+      },
+      "ac_current": {
+        "name": "Prąd AC"
+      },
+      "ac_frequency": {
+        "name": "Częstotliwość AC"
+      },
+      "inverter_power": {
+        "name": "Moc"
+      },
+      "inverter_energy_today": {
+        "name": "Energia dziś"
+      }
+    }
+  },
+  "exceptions": {
+    "auth_failed": {
+      "message": "SolarEdge odrzucił token - ponownie zatwierdź dostęp integracji."
+    },
+    "credits_exhausted": {
+      "message": "Miesięczne kredyty API wykorzystane; odczyty wrócą po resecie cyklu."
+    },
+    "rate_limited": {
+      "message": "Przekroczony minutowy limit zapytań SolarEdge."
+    },
+    "update_failed": {
+      "message": "Odczyt z SolarEdge nie powiódł się: {error}"
+    },
+    "entry_not_found": {
+      "message": "Wskaż dokładnie jedną instalację SolarEdge (config_entry_id)."
+    }
+  },
+  "issues": {
+    "credits_exhausted": {
+      "title": "Wykorzystane kredyty API SolarEdge",
+      "description": "SolarEdge odmawia kolejnych zapytań w tym miesiącu. Odczyty wrócą {reset}. Rozważ mniej grup sensorów albo większą rezerwę w opcjach integracji."
+    },
+    "consent_expiring": {
+      "title": "Zgoda SolarEdge wkrótce wygaśnie",
+      "description": "24-miesięczna zgoda Site Access kończy się {date}. Zatwierdź dostęp ponownie przed tą datą."
+    }
+  },
+  "services": {
+    "set_credits_used": {
+      "name": "Ustaw wykorzystane kredyty",
+      "description": "Koryguje lokalny licznik kredytów liczbą z portalu deweloperskiego SolarEdge.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Instalacja",
+          "description": "Potrzebne tylko przy więcej niż jednej instalacji."
+        },
+        "used": {
+          "name": "Wykorzystane kredyty",
+          "description": "Wykorzystane kredyty w bieżącym cyklu według portalu."
+        }
+      }
+    },
+    "refresh": {
+      "name": "Odczytaj teraz",
+      "description": "Natychmiastowy odczyt z SolarEdge (zużywa kredyty).",
+      "fields": {
+        "config_entry_id": {
+          "name": "Instalacja",
+          "description": "Potrzebne tylko przy więcej niż jednej instalacji."
+        }
+      }
+    }
+  }
+}

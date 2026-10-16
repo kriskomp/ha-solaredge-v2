@@ -1,5 +1,0 @@
-{"period": {"from": "2026-09-29T00:00:00-05:00", "to": "2026-09-29T12:50:00-05:00"}, "resolution": "QUARTER_HOUR",
- "meters": {"M-PROD-001": {
-  "productionEnergy": {"unit": "WH", "values": [{"timestamp": "2026-09-29T12:15:00-05:00", "value": 1500}, {"timestamp": "2026-09-29T12:30:00-05:00", "value": 1620.5}]},
-  "productionPower": {"unit": "W", "values": [{"timestamp": "2026-09-29T12:15:00-05:00", "value": 6000}, {"timestamp": "2026-09-29T12:30:00-05:00", "value": 6480}]}
- }}}

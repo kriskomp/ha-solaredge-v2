@@ -1,9 +1,0 @@
-{
-  "tag_prefix": "v",
-  "timezone": "America/Chicago",
-  "archive": {"source": "custom_components/solaredge_v2", "name": "solaredge_v2.zip"},
-  "release_paths": ["custom_components/solaredge_v2"],
-  "version_fields": [
-    {"path": "custom_components/solaredge_v2/manifest.json", "kind": "json", "key": "version"}
-  ]
-}

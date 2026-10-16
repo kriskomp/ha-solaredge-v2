@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
+from typing import Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -13,224 +14,349 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
+    PERCENTAGE,
     EntityCategory,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
     UnitOfEnergy,
     UnitOfFrequency,
     UnitOfPower,
-    UnitOfRatio,
+    UnitOfTime,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
-from . import SolarEdgeConfigEntry
-from .api import Device, DeviceType, Series, SiteData
-from .coordinator import SolarEdgeCoordinator
-from .entity import SolarEdgeDeviceEntity, SolarEdgeSiteEntity
+from .api import SiteOverview, parse_telemetry
+from .const import DOMAIN, MANUFACTURER, POWER_STALE
+from .coordinator import Options, SolarEdgeConfigEntry, SolarEdgeCoordinator
+from .state import InverterReading
 
 PARALLEL_UPDATES = 0
-
-type Metrics = dict[str, Series]
 
 
 @dataclass(frozen=True, kw_only=True)
 class SiteSensorDescription(SensorEntityDescription):
-    """A sensor computed from the site-level data."""
+    """A sensor on the site device."""
 
-    value_fn: Callable[[SiteData], float | int | datetime | None]
+    value_fn: Callable[[SolarEdgeCoordinator], Any]
+    attrs_fn: Callable[[SolarEdgeCoordinator], dict[str, Any] | None] | None = None
+    enabled_fn: Callable[[Options], bool] = lambda _: True
+    monotonic: bool = False  # ignore small downward revisions (they look like resets)
 
 
 @dataclass(frozen=True, kw_only=True)
-class DeviceSensorDescription(SensorEntityDescription):
-    """A sensor computed from one device's telemetry metrics."""
+class InverterSensorDescription(SensorEntityDescription):
+    """A sensor on one inverter device."""
 
-    value_fn: Callable[[Metrics], float | None]
-
-
-def _latest_w(metric: str) -> Callable[[Metrics], float | None]:
-    return lambda m: m[metric].latest_watts if metric in m else None
+    value_fn: Callable[[InverterReading], float | None]
 
 
-def _today_wh(metric: str) -> Callable[[Metrics], float | None]:
-    return lambda m: m[metric].total_watt_hours if metric in m else None
+def _today(c: SolarEdgeCoordinator) -> date:
+    return c.today()
 
 
-def _latest(metric: str) -> Callable[[Metrics], float | None]:
-    return lambda m: m[metric].latest if metric in m else None
+def _power(c: SolarEdgeCoordinator) -> float | None:
+    reading = c.state.today
+    if reading is None:
+        return None
+    if reading.day != _today(c) or reading.power_at is None or reading.power_w is None:
+        return 0.0
+    if dt_util.utcnow() - reading.power_at > POWER_STALE:
+        return 0.0
+    return round(reading.power_w, 1)
 
 
-def _power(key: str, metric: str, *, enabled: bool = True) -> DeviceSensorDescription:
-    return DeviceSensorDescription(
-        key=key,
-        translation_key=key,
-        device_class=SensorDeviceClass.POWER,
-        native_unit_of_measurement=UnitOfPower.WATT,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_registry_enabled_default=enabled,
-        value_fn=_latest_w(metric),
-    )
+def _power_attrs(c: SolarEdgeCoordinator) -> dict[str, Any]:
+    reading = c.state.today
+    return {
+        "data_time": reading.power_at.isoformat() if reading and reading.power_at else None,
+        "note": "15-minute average reported by SolarEdge",
+    }
 
 
-def _energy(key: str, metric: str, *, enabled: bool = True) -> DeviceSensorDescription:
-    return DeviceSensorDescription(
-        key=key,
-        translation_key=key,
-        device_class=SensorDeviceClass.ENERGY,
-        native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
-        suggested_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-        entity_registry_enabled_default=enabled,
-        value_fn=_today_wh(metric),
-    )
+def _energy_today(c: SolarEdgeCoordinator) -> float | None:
+    reading = c.state.today
+    if reading is None:
+        return None
+    return reading.energy_wh if reading.day == _today(c) else 0.0
 
 
-def _site_energy(
-    key: str, fn: Callable[[SiteData], float | None], *, enabled: bool = True
-) -> SiteSensorDescription:
-    return SiteSensorDescription(
-        key=key,
-        translation_key=key,
-        device_class=SensorDeviceClass.ENERGY,
-        native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
-        suggested_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-        entity_registry_enabled_default=enabled,
-        value_fn=fn,
-    )
+def _peak(c: SolarEdgeCoordinator) -> float | None:
+    reading = c.state.today
+    if reading is None or reading.day != _today(c) or reading.peak_w is None:
+        return None
+    return round(reading.peak_w, 1)
 
+
+def _peak_attrs(c: SolarEdgeCoordinator) -> dict[str, Any]:
+    reading = c.state.today
+    at = reading.peak_at if reading and reading.day == _today(c) else None
+    return {"peak_time": at.isoformat() if at else None}
+
+
+def _overview(c: SolarEdgeCoordinator) -> SiteOverview | None:
+    return SiteOverview.from_api(c.state.overview) if c.state.overview else None
+
+
+def _overview_value(attr: str) -> Callable[[SolarEdgeCoordinator], float | None]:
+    def value(c: SolarEdgeCoordinator) -> float | None:
+        overview = _overview(c)
+        return getattr(overview, attr) if overview else None
+
+    return value
+
+
+def _storage_value(metric: str) -> Callable[[SolarEdgeCoordinator], float | None]:
+    def value(c: SolarEdgeCoordinator) -> float | None:
+        if not c.state.storage:
+            return None
+        for metrics in parse_telemetry(c.state.storage, "storage").values():
+            series = metrics.get(metric)
+            if series is not None and series.latest is not None:
+                return round(series.latest, 2)
+        return None
+
+    return value
+
+
+def _date_of(moment: datetime | date | None) -> date | None:
+    if isinstance(moment, datetime):
+        return moment.date()
+    return moment
+
+
+ENERGY = {
+    "native_unit_of_measurement": UnitOfEnergy.WATT_HOUR,
+    "suggested_unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
+    "suggested_display_precision": 2,
+    "device_class": SensorDeviceClass.ENERGY,
+    "state_class": SensorStateClass.TOTAL_INCREASING,
+}
+SITE_ENERGY = {**ENERGY, "monotonic": True}
 
 SITE_SENSORS: tuple[SiteSensorDescription, ...] = (
     SiteSensorDescription(
         key="current_power",
         translation_key="current_power",
-        device_class=SensorDeviceClass.POWER,
         native_unit_of_measurement=UnitOfPower.WATT,
-        state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda d: d.power.latest_watts if d.power else None,
-    ),
-    _site_energy("production_today", lambda d: d.overview.production if d.overview else None),
-    _site_energy("consumption_today", lambda d: d.overview.consumption if d.overview else None),
-    _site_energy(
-        "export_today", lambda d: d.overview.production_to_grid if d.overview else None
-    ),
-    _site_energy(
-        "import_today", lambda d: d.overview.consumption_from_grid if d.overview else None
-    ),
-    _site_energy(
-        "self_consumption_today",
-        lambda d: d.overview.production_to_self_consumption if d.overview else None,
-        enabled=False,
-    ),
-    _site_energy(
-        "to_storage_today",
-        lambda d: d.overview.production_to_storage if d.overview else None,
-        enabled=False,
-    ),
-    _site_energy(
-        "from_storage_today",
-        lambda d: d.overview.consumption_from_storage if d.overview else None,
-        enabled=False,
-    ),
-    _site_energy("lifetime_energy", lambda d: d.lifetime_energy),
-    SiteSensorDescription(
-        key="peak_power",
-        translation_key="peak_power",
         device_class=SensorDeviceClass.POWER,
-        native_unit_of_measurement=UnitOfPower.KILO_WATT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda d: d.metadata.peak_power_kw,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_power,
+        attrs_fn=_power_attrs,
+    ),
+    SiteSensorDescription(key="energy_today", translation_key="energy_today", value_fn=_energy_today, **SITE_ENERGY),
+    SiteSensorDescription(
+        key="peak_power_today",
+        translation_key="peak_power_today",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        value_fn=_peak,
+        attrs_fn=_peak_attrs,
     ),
     SiteSensorDescription(
-        key="last_update",
-        translation_key="last_update",
-        device_class=SensorDeviceClass.TIMESTAMP,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda d: d.metadata.last_update_time,
+        key="energy_this_month",
+        translation_key="energy_this_month",
+        value_fn=lambda c: c.state.month_wh(c.today()),
+        enabled_fn=lambda o: o.totals,
+        **SITE_ENERGY,
+    ),
+    SiteSensorDescription(
+        key="energy_this_year",
+        translation_key="energy_this_year",
+        value_fn=lambda c: c.state.year_wh(c.today()),
+        enabled_fn=lambda o: o.totals,
+        **SITE_ENERGY,
+    ),
+    SiteSensorDescription(
+        key="lifetime_energy",
+        translation_key="lifetime_energy",
+        value_fn=lambda c: c.state.lifetime_wh(c.today()),
+        enabled_fn=lambda o: o.totals,
+        **SITE_ENERGY,
     ),
     SiteSensorDescription(
         key="open_alerts",
         translation_key="open_alerts",
         state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda d: len(d.open_alerts) if d.open_alerts is not None else None,
+        value_fn=lambda c: c.state.alerts_open,
+        enabled_fn=lambda o: o.alerts,
     ),
-)
-
-INVERTER_SENSORS: tuple[DeviceSensorDescription, ...] = (
-    _power("inverter_power", "power"),
-    _energy("inverter_energy_today", "energy"),
-    DeviceSensorDescription(
-        key="inverter_voltage",
-        translation_key="inverter_voltage",
-        device_class=SensorDeviceClass.VOLTAGE,
-        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_registry_enabled_default=False,
-        value_fn=_latest("voltage"),
+    # Optional groups (one extra credit per poll each)
+    SiteSensorDescription(
+        key="consumption_today",
+        translation_key="consumption_today",
+        value_fn=_overview_value("consumption"),
+        enabled_fn=lambda o: o.overview,
+        **SITE_ENERGY,
     ),
-    DeviceSensorDescription(
-        key="inverter_current",
-        translation_key="inverter_current",
-        device_class=SensorDeviceClass.CURRENT,
-        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_registry_enabled_default=False,
-        value_fn=_latest("current"),
+    SiteSensorDescription(
+        key="self_consumption_today",
+        translation_key="self_consumption_today",
+        value_fn=_overview_value("production_to_self_consumption"),
+        enabled_fn=lambda o: o.overview,
+        **SITE_ENERGY,
     ),
-    DeviceSensorDescription(
-        key="inverter_frequency",
-        translation_key="inverter_frequency",
-        device_class=SensorDeviceClass.FREQUENCY,
-        native_unit_of_measurement=UnitOfFrequency.HERTZ,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_registry_enabled_default=False,
-        value_fn=_latest("frequency"),
+    SiteSensorDescription(
+        key="export_today",
+        translation_key="export_today",
+        value_fn=_overview_value("production_to_grid"),
+        enabled_fn=lambda o: o.overview,
+        **SITE_ENERGY,
     ),
-)
-
-METER_SENSORS: tuple[DeviceSensorDescription, ...] = (
-    _power("meter_production_power", "productionPower"),
-    _power("meter_consumption_power", "consumptionPower"),
-    _power("meter_import_power", "importPower"),
-    _power("meter_export_power", "exportPower"),
-    _energy("meter_production_energy_today", "productionEnergy", enabled=False),
-    _energy("meter_consumption_energy_today", "consumptionEnergy", enabled=False),
-    _energy("meter_import_energy_today", "importEnergy", enabled=False),
-    _energy("meter_export_energy_today", "exportEnergy", enabled=False),
-)
-
-BATTERY_SENSORS: tuple[DeviceSensorDescription, ...] = (
-    _power("battery_charge_power", "chargePower"),
-    _power("battery_discharge_power", "dischargePower"),
-    DeviceSensorDescription(
+    SiteSensorDescription(
+        key="import_today",
+        translation_key="import_today",
+        value_fn=_overview_value("consumption_from_grid"),
+        enabled_fn=lambda o: o.overview,
+        **SITE_ENERGY,
+    ),
+    SiteSensorDescription(
         key="battery_state_of_energy",
         translation_key="battery_state_of_energy",
+        native_unit_of_measurement=PERCENTAGE,
         device_class=SensorDeviceClass.BATTERY,
-        native_unit_of_measurement=UnitOfRatio.PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=_latest("stateOfEnergy"),
+        value_fn=_storage_value("stateOfEnergy"),
+        enabled_fn=lambda o: o.storage,
     ),
-    DeviceSensorDescription(
-        key="battery_remaining_energy",
-        translation_key="battery_remaining_energy",
-        device_class=SensorDeviceClass.ENERGY_STORAGE,
-        native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
-        suggested_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+    SiteSensorDescription(
+        key="battery_charge_power",
+        translation_key="battery_charge_power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda m: (
-            m["remainingEnergy"].latest_watt_hours if "remainingEnergy" in m else None
-        ),
+        value_fn=_storage_value("chargePower"),
+        enabled_fn=lambda o: o.storage,
     ),
-    _energy("battery_charge_energy_today", "chargeEnergy", enabled=False),
-    _energy("battery_discharge_energy_today", "dischargeEnergy", enabled=False),
+    SiteSensorDescription(
+        key="battery_discharge_power",
+        translation_key="battery_discharge_power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_storage_value("dischargePower"),
+        enabled_fn=lambda o: o.storage,
+    ),
+    # Diagnostics: credits and schedule
+    SiteSensorDescription(
+        key="credits_used",
+        translation_key="credits_used",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda c: c.ledger.used,
+        attrs_fn=lambda c: {
+            "limit": c.options.monthly_credits,
+            "cycle_start": c.ledger.cycle_start.isoformat(),
+        },
+    ),
+    SiteSensorDescription(
+        key="credits_remaining",
+        translation_key="credits_remaining",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda c: c.credits_remaining,
+    ),
+    SiteSensorDescription(
+        key="credits_projected",
+        translation_key="credits_projected",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda c: c.projected_use(),
+    ),
+    SiteSensorDescription(
+        key="credit_cycle_end",
+        translation_key="credit_cycle_end",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        device_class=SensorDeviceClass.DATE,
+        value_fn=lambda c: c.cycle_end,
+    ),
+    SiteSensorDescription(
+        key="poll_interval",
+        translation_key="poll_interval",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+        device_class=SensorDeviceClass.DURATION,
+        suggested_display_precision=0,
+        value_fn=lambda c: round(c.interval_minutes, 1) if c.interval_minutes else None,
+        attrs_fn=lambda c: {"mode": c.options.mode, "paused": c.paused},
+    ),
+    SiteSensorDescription(
+        key="last_poll",
+        translation_key="last_poll",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda c: c.state.last_poll,
+    ),
+    SiteSensorDescription(
+        key="next_poll",
+        translation_key="next_poll",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda c: c.next_poll,
+    ),
+    SiteSensorDescription(
+        key="data_time",
+        translation_key="data_time",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda c: c.state.today.power_at if c.state.today else None,
+    ),
+    SiteSensorDescription(
+        key="consent_expires",
+        translation_key="consent_expires",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        device_class=SensorDeviceClass.DATE,
+        value_fn=lambda c: _date_of(c.consent_expires),
+    ),
 )
 
-DEVICE_SENSORS: dict[str, tuple[tuple[DeviceSensorDescription, ...], str]] = {
-    DeviceType.INVERTER: (INVERTER_SENSORS, "inverters"),
-    DeviceType.METER: (METER_SENSORS, "meters"),
-    DeviceType.BATTERY: (BATTERY_SENSORS, "storage"),
-}
+INVERTER_SENSORS: tuple[InverterSensorDescription, ...] = (
+    InverterSensorDescription(
+        key="ac_voltage",
+        translation_key="ac_voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        value_fn=lambda r: r.voltage,
+    ),
+    InverterSensorDescription(
+        key="ac_current",
+        translation_key="ac_current",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda r: r.current,
+    ),
+    InverterSensorDescription(
+        key="ac_frequency",
+        translation_key="ac_frequency",
+        native_unit_of_measurement=UnitOfFrequency.HERTZ,
+        device_class=SensorDeviceClass.FREQUENCY,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda r: r.frequency,
+    ),
+    InverterSensorDescription(
+        key="inverter_power",
+        translation_key="inverter_power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+        value_fn=lambda r: r.power_w,
+    ),
+    InverterSensorDescription(
+        key="inverter_energy_today",
+        translation_key="inverter_energy_today",
+        entity_registry_enabled_default=False,
+        value_fn=lambda r: r.energy_today_wh,
+        **ENERGY,
+    ),
+)
 
 
 async def async_setup_entry(
@@ -238,63 +364,115 @@ async def async_setup_entry(
     entry: SolarEdgeConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Add site sensors now and device sensors whenever the inventory grows."""
+    """Create the site sensors now and inverter sensors as inverters appear."""
     coordinator = entry.runtime_data
-    async_add_entities(SolarEdgeSiteSensor(coordinator, d) for d in SITE_SENSORS)
-    if not coordinator.device_telemetry:
-        return
+    async_add_entities(
+        SiteSensor(coordinator, d) for d in SITE_SENSORS if d.enabled_fn(coordinator.options)
+    )
 
     known: set[str] = set()
 
     @callback
-    def _add_new_devices() -> None:
-        new = [
-            d
-            for d in coordinator.data.devices
-            if d.type in DEVICE_SENSORS and d.serial_number not in known
-        ]
-        if not new:
-            return
-        known.update(d.serial_number for d in new)
-        async_add_entities(
-            SolarEdgeDeviceSensor(coordinator, description, device)
-            for device in new
-            for description in DEVICE_SENSORS[device.type][0]
-        )
+    def add_inverters() -> None:
+        serials = set(coordinator.state.today.inverters) if coordinator.state.today else set()
+        serials |= {
+            str(d["serialNumber"])
+            for d in coordinator.state.devices
+            if isinstance(d, dict) and d.get("type") == "INVERTER" and d.get("serialNumber")
+        }
+        new = serials - known
+        if new:
+            known.update(new)
+            async_add_entities(
+                InverterSensor(coordinator, d, serial) for serial in sorted(new) for d in INVERTER_SENSORS
+            )
 
-    _add_new_devices()
-    entry.async_on_unload(coordinator.async_add_listener(_add_new_devices))
+    add_inverters()
+    entry.async_on_unload(coordinator.async_add_listener(add_inverters))
 
 
-class SolarEdgeSiteSensor(SolarEdgeSiteEntity, SensorEntity):
-    """A site-level sensor."""
+class SiteSensor(CoordinatorEntity[SolarEdgeCoordinator], SensorEntity):
+    """A sensor on the site device."""
 
+    _attr_has_entity_name = True
     entity_description: SiteSensorDescription
 
+    def __init__(self, coordinator: SolarEdgeCoordinator, description: SiteSensorDescription) -> None:
+        """Attach to the site device."""
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._attr_unique_id = f"{coordinator.site_id}_{description.key}"
+        self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, coordinator.site_id)})
+        self._last: float | None = None
+
     @property
-    def native_value(self) -> float | int | datetime | None:
-        """Compute the value from the latest site data."""
-        return self.entity_description.value_fn(self.coordinator.data)
+    def available(self) -> bool:
+        """Cached values stay visible even when the last poll failed."""
+        return True
+
+    @property
+    def native_value(self) -> Any:
+        """Value from the cached state."""
+        value = self.entity_description.value_fn(self.coordinator)
+        if self.entity_description.monotonic and isinstance(value, int | float):
+            last = self._last
+            if last is not None and last * 0.99 <= value < last:
+                return last  # tiny revision, not a reset
+            self._last = value
+        return value
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Optional attributes."""
+        fn = self.entity_description.attrs_fn
+        return fn(self.coordinator) if fn else None
 
 
-class SolarEdgeDeviceSensor(SolarEdgeDeviceEntity, SensorEntity):
-    """A telemetry sensor on an inverter, meter, or battery."""
+class InverterSensor(CoordinatorEntity[SolarEdgeCoordinator], SensorEntity):
+    """A sensor on one inverter."""
 
-    entity_description: DeviceSensorDescription
+    _attr_has_entity_name = True
+    entity_description: InverterSensorDescription
 
     def __init__(
-        self,
-        coordinator: SolarEdgeCoordinator,
-        description: DeviceSensorDescription,
-        device: Device,
+        self, coordinator: SolarEdgeCoordinator, description: InverterSensorDescription, serial: str
     ) -> None:
-        """Remember which telemetry map holds this device."""
-        super().__init__(coordinator, description, device)
-        self._telemetry_attr = DEVICE_SENSORS[device.type][1]
+        """Attach to the inverter device."""
+        super().__init__(coordinator)
+        self.entity_description = description
+        self.serial = serial
+        self._attr_unique_id = f"{serial}_{description.key}"
+        info = next(
+            (
+                d
+                for d in coordinator.state.devices
+                if isinstance(d, dict) and str(d.get("serialNumber")) == serial
+            ),
+            {},
+        )
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, serial)},
+            manufacturer=info.get("manufacturer") or MANUFACTURER,
+            model=info.get("partNumber"),
+            name=info.get("name") or f"Inverter {serial}",
+            serial_number=serial,
+            sw_version=info.get("firmwareVersion"),
+            via_device=(DOMAIN, coordinator.site_id),
+        )
+
+    @property
+    def available(self) -> bool:
+        """Cached values stay visible even when the last poll failed."""
+        return True
 
     @property
     def native_value(self) -> float | None:
-        """Compute the value from this device's metrics."""
-        telemetry = getattr(self.coordinator.data, self._telemetry_attr)
-        metrics = telemetry.get(self.serial_number)
-        return self.entity_description.value_fn(metrics) if metrics else None
+        """Latest 15-minute value of this inverter (today only)."""
+        reading = self.coordinator.state.today
+        if reading is None or reading.day != self.coordinator.today():
+            return None
+        inverter = reading.inverters.get(self.serial)
+        if inverter is None:
+            return None
+        value = self.entity_description.value_fn(inverter)
+        return round(value, 3) if value is not None else None

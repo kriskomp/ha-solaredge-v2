@@ -1,7 +1,1 @@
-[
- {"type": "INVERTER", "serialNumber": "7E1234B5-67", "manufacturer": "SolarEdge", "model": "SE7600H-US",
-  "partNumber": "SE7600H-US000BNU4", "firmwareVersion": "4.21.30", "active": true, "name": "Inverter 1", "connectedOptimizers": 20},
- {"type": "METER", "serialNumber": "M-PROD-001", "manufacturer": "SolarEdge", "model": "SE-MTR-3Y", "active": true,
-  "name": "Production Meter", "connectedTo": "7E1234B5-67", "meterType": "PRODUCTION"},
- {"type": "BATTERY", "serialNumber": "BATT-001", "manufacturer": "SolarEdge", "model": "Home Battery", "active": true, "name": "Battery 1"}
-]
+[{"type":"INVERTER","serialNumber":"7E1234AB-01","manufacturer":"SolarEdge","partNumber":"SE5K-RW0TEBNN4","createdAt":"2021-05-31T01:16:17+02:00","firmwareVersion":"4.21.23","connectedTo":null,"parent":null,"active":true,"nameplate":5250.0,"name":"Inverter 1","form":null,"communicationType":"WIFI","firmware":"4.21.23.1.13.2306.2.19.1900","connectedOptimizers":18}]

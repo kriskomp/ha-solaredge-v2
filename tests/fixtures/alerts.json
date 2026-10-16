@@ -1,3 +1,0 @@
-[{"alertId": 112957209, "siteId": 1234567, "category": "EQUIPMENT", "type": "DC Isolation", "impact": 7,
-  "status": "OPEN", "firstTrigger": "2026-09-28T23:07:18Z", "lastTrigger": "2026-09-28T23:07:18Z",
-  "component": {"name": "Inverter 1", "serialNumber": "7E1234B5-67"}, "errorCodes": []}]

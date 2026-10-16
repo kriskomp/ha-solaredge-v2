@@ -1,340 +1,331 @@
-"""Config flow for the SolarEdge Monitoring API v2 integration."""
+"""Config, re-authentication and options flows.
+
+SolarEdge Connect does not return the OAuth ``state`` parameter, so Home
+Assistant's built-in OAuth flow cannot finish. Instead the flow shows the
+consent link and the user pastes the address the browser lands on
+(``http://localhost/callback?code=...&site_id=...``); nothing needs to listen
+on that address.
+"""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-import logging
-from typing import Any, override
+import secrets
+from typing import Any
+
+import voluptuous as vol
 
 from homeassistant.config_entries import (
-    SOURCE_REAUTH,
-    SOURCE_RECONFIGURE,
     ConfigEntry,
+    ConfigFlow,
     ConfigFlowResult,
-    OptionsFlowWithReload,
+    OptionsFlow,
 )
-from homeassistant.const import CONF_API_KEY, CONF_TOKEN
+from homeassistant.const import CONF_CLIENT_ID, CONF_CLIENT_SECRET
 from homeassistant.core import callback
-from homeassistant.helpers import config_entry_oauth2_flow
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
     BooleanSelector,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
-    SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
+    SelectSelectorMode,
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
 )
-import probatio
+from homeassistant.util import dt as dt_util
 
 from .api import (
-    ApiKeyAuth,
-    AuthProvider,
-    BearerTokenAuth,
-    SiteMetadata,
-    SiteSummary,
-    SolarEdgeAuthenticationError,
+    DEFAULT_REDIRECT_URI,
+    RedirectParseError,
     SolarEdgeClient,
     SolarEdgeConnectionError,
-    SolarEdgeCreditLimitError,
     SolarEdgeError,
     SolarEdgeForbiddenError,
+    SolarEdgeOAuthError,
+    TokenSet,
+    authorize_url,
+    exchange_code,
+    parse_redirect,
 )
+from .budget import MODE_ADAPTIVE, MODE_FIXED
 from .const import (
-    AUTH_TYPE_API_KEY,
-    AUTH_TYPE_OAUTH,
-    CONF_AUTH_TYPE,
-    CONF_DEVICE_TELEMETRY,
-    CONF_SCAN_INTERVAL_MINUTES,
+    CONF_ALERTS,
+    CONF_BILLING_DAY,
+    CONF_GRANTED_AT,
+    CONF_INITIAL,
+    CONF_MIN_INTERVAL,
+    CONF_MONTHLY_CREDITS,
+    CONF_OVERVIEW,
+    CONF_POLL_MODE,
+    CONF_REDIRECT_URI,
+    CONF_RESERVE_PERCENT,
     CONF_SITE_ID,
-    DEFAULT_DEVICE_TELEMETRY,
-    DEFAULT_SCAN_INTERVAL_MINUTES,
+    CONF_STORAGE,
+    CONF_TOKEN,
+    CONF_TOTALS,
     DOMAIN,
-    MAX_SCAN_INTERVAL_MINUTES,
-    MIN_SCAN_INTERVAL_MINUTES,
+    LOGGER,
+    MIN_INTERVAL_FLOOR,
 )
+from .coordinator import Options, default_billing_day, options_preview
 
-_LOGGER = logging.getLogger(__name__)
+CONF_REDIRECT_URL = "redirect_url"
+CONF_SITE_ID_INPUT = "site_id"
 
-API_KEY_SCHEMA = probatio.Schema(
-    {probatio.Required(CONF_API_KEY): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))}
-)
-SITE_ID_SCHEMA = probatio.Schema(
+STEP_USER_SCHEMA = vol.Schema(
     {
-        probatio.Required(CONF_SITE_ID): NumberSelector(
-            NumberSelectorConfig(min=1, step=1, mode=NumberSelectorMode.BOX)
-        )
+        vol.Required(CONF_CLIENT_ID): TextSelector(),
+        vol.Required(CONF_CLIENT_SECRET): TextSelector(
+            TextSelectorConfig(type=TextSelectorType.PASSWORD)
+        ),
+        vol.Required(CONF_REDIRECT_URI, default=DEFAULT_REDIRECT_URI): TextSelector(
+            TextSelectorConfig(type=TextSelectorType.URL)
+        ),
     }
 )
 
 
-class _StaticToken:
-    def __init__(self, token: str) -> None:
-        self._token = token
+def _authorize_schema(need_site_id: bool) -> vol.Schema:
+    fields: dict[Any, Any] = {vol.Required(CONF_REDIRECT_URL): TextSelector()}
+    if need_site_id:
+        fields[vol.Required(CONF_SITE_ID_INPUT)] = TextSelector()
+    return vol.Schema(fields)
 
-    async def __call__(self) -> str:
-        return self._token
 
+class SolarEdgeConfigFlow(ConfigFlow, domain=DOMAIN):
+    """Site Access setup with a pasted redirect URL."""
 
-class SolarEdgeFlowHandler(
-    config_entry_oauth2_flow.AbstractOAuth2FlowHandler, domain=DOMAIN
-):
-    """Set up a site with Site Access (OAuth) or Fleet Access (API key)."""
-
-    DOMAIN = DOMAIN
     VERSION = 1
 
     def __init__(self) -> None:
-        """Initialize the flow state."""
-        super().__init__()
-        self._oauth_data: dict[str, Any] = {}
-        self._api_key: str | None = None
-        self._sites: list[SiteSummary] = []
-
-    @property
-    @override
-    def logger(self) -> logging.Logger:
-        """Return the flow logger."""
-        return _LOGGER
+        """Hold the values between steps."""
+        self._client_id = ""
+        self._client_secret = ""
+        self._redirect_uri = DEFAULT_REDIRECT_URI
+        self._state = secrets.token_urlsafe(16)
+        self._need_site_id = False
 
     @staticmethod
     @callback
-    @override
-    def async_get_options_flow(config_entry: ConfigEntry) -> SolarEdgeOptionsFlow:
-        """Return the options flow."""
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        """Polling and sensor-group options."""
         return SolarEdgeOptionsFlow()
 
-    @override
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Let the user pick the access type their developer application has."""
-        return self.async_show_menu(step_id="user", menu_options=["oauth", "api_key"])
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Ask for the developer-console application credentials."""
+        if user_input is not None:
+            self._client_id = user_input[CONF_CLIENT_ID].strip()
+            self._client_secret = user_input[CONF_CLIENT_SECRET].strip()
+            self._redirect_uri = user_input[CONF_REDIRECT_URI].strip()
+            return await self.async_step_authorize()
+        return self.async_show_form(
+            step_id="user",
+            data_schema=STEP_USER_SCHEMA,
+            description_placeholders={"console": "https://developer.solaredge.com"},
+        )
 
-    async def async_step_oauth(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Start the Site Access OAuth flow."""
-        return await self.async_step_pick_implementation()
-
-    @override
-    async def async_oauth_create_entry(self, data: dict[str, Any]) -> ConfigFlowResult:
-        """Keep the token, then ask for (or re-check) the site it was granted for."""
-        self._oauth_data = data
-        if self.source in (SOURCE_REAUTH, SOURCE_RECONFIGURE):
-            entry = self._existing_entry()
-            errors, _ = await self._async_validate_site(
-                self._bearer(), int(entry.data[CONF_SITE_ID])
+    async def _exchange(
+        self, user_input: dict[str, Any], errors: dict[str, str]
+    ) -> tuple[TokenSet, str, dict[str, Any], int] | None:
+        """Trade the pasted code for tokens and prove access to the site."""
+        try:
+            code, site_id = parse_redirect(user_input[CONF_REDIRECT_URL])
+        except RedirectParseError:
+            errors[CONF_REDIRECT_URL] = "invalid_redirect"
+            return None
+        site_id = site_id or str(user_input.get(CONF_SITE_ID_INPUT) or "").strip() or None
+        if not site_id:
+            self._need_site_id = True
+            errors["base"] = "site_id_missing"
+            return None
+        session = async_get_clientsession(self.hass)
+        try:
+            token = await exchange_code(
+                session, self._client_id, self._client_secret, code, self._redirect_uri
             )
-            if errors:
-                return self.async_abort(reason=f"oauth_{errors['base']}")
-            return self.async_update_reload_and_abort(
-                entry, data_updates={**data, CONF_AUTH_TYPE: AUTH_TYPE_OAUTH}
-            )
-        return await self.async_step_site()
+        except SolarEdgeOAuthError as err:
+            LOGGER.warning("Code exchange refused: %s", err)
+            errors["base"] = "invalid_code"
+            return None
+        except SolarEdgeConnectionError:
+            errors["base"] = "cannot_connect"
+            return None
 
-    async def async_step_site(
+        calls = 0
+
+        def count(_path: str, _status: int) -> None:
+            nonlocal calls
+            calls += 1
+
+        async def token_getter() -> str:
+            return token.access_token
+
+        client = SolarEdgeClient(session, token_getter, on_call=count)
+        try:
+            site = await client.site(site_id)
+        except SolarEdgeForbiddenError:
+            errors["base"] = "no_site_access"
+            return None
+        except SolarEdgeError:
+            errors["base"] = "cannot_connect"
+            return None
+        return token, str(site_id), site if isinstance(site, dict) else {}, calls
+
+    async def async_step_authorize(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Ask for the Site ID; the OAuth callback carries it but Home Assistant drops it."""
+        """Show the consent link and take the pasted redirect address."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            site_id = int(user_input[CONF_SITE_ID])
-            await self.async_set_unique_id(str(site_id))
-            self._abort_if_unique_id_configured()
-            errors, metadata = await self._async_validate_site(self._bearer(), site_id)
-            if metadata is not None:
+            result = await self._exchange(user_input, errors)
+            if result is not None:
+                token, site_id, site, calls = result
+                await self.async_set_unique_id(site_id)
+                self._abort_if_unique_id_configured()
+                now = dt_util.utcnow()
                 return self.async_create_entry(
-                    title=metadata.name,
+                    title=str(site.get("name") or f"SolarEdge {site_id}"),
                     data={
-                        **self._oauth_data,
-                        CONF_AUTH_TYPE: AUTH_TYPE_OAUTH,
+                        CONF_CLIENT_ID: self._client_id,
+                        CONF_CLIENT_SECRET: self._client_secret,
+                        CONF_REDIRECT_URI: self._redirect_uri,
                         CONF_SITE_ID: site_id,
+                        CONF_TOKEN: token.as_dict(),
+                        CONF_GRANTED_AT: now.isoformat(),
+                        CONF_INITIAL: {"site": site, "calls": calls},
                     },
+                    options={CONF_BILLING_DAY: now.astimezone(dt_util.get_default_time_zone()).day},
                 )
         return self.async_show_form(
-            step_id="site",
-            data_schema=self.add_suggested_values_to_schema(SITE_ID_SCHEMA, user_input),
+            step_id="authorize",
+            data_schema=_authorize_schema(self._need_site_id),
             errors=errors,
+            description_placeholders={
+                "url": authorize_url(self._client_id, self._redirect_uri, self._state),
+                "redirect": self._redirect_uri,
+            },
         )
 
-    async def async_step_api_key(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Validate a Fleet Access App API Key and list the sites it can read."""
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            api_key = user_input[CONF_API_KEY].strip()
-            client = self._client(ApiKeyAuth(api_key))
-            try:
-                sites = await client.async_get_sites()
-            except SolarEdgeError as err:
-                errors["base"] = _error_key(err)
-            else:
-                if not sites:
-                    errors["base"] = "no_sites"
-                else:
-                    self._api_key = api_key
-                    self._sites = sites
-                    if len(sites) == 1:
-                        return await self.async_step_select_site(
-                            {CONF_SITE_ID: str(sites[0].site_id)}
-                        )
-                    return await self.async_step_select_site()
-        return self.async_show_form(
-            step_id="api_key", data_schema=API_KEY_SCHEMA, errors=errors
-        )
-
-    async def async_step_select_site(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Pick one site from those the key can read."""
-        if self._api_key is None:
-            return await self.async_step_api_key()
-        if user_input is not None:
-            site_id = int(user_input[CONF_SITE_ID])
-            await self.async_set_unique_id(str(site_id))
-            self._abort_if_unique_id_configured()
-            name = next((s.name for s in self._sites if s.site_id == site_id), str(site_id))
-            return self.async_create_entry(
-                title=name,
-                data={
-                    CONF_AUTH_TYPE: AUTH_TYPE_API_KEY,
-                    CONF_API_KEY: self._api_key,
-                    CONF_SITE_ID: site_id,
-                },
-            )
-        options = [
-            SelectOptionDict(value=str(s.site_id), label=f"{s.name} ({s.site_id})")
-            for s in self._sites
-        ]
-        return self.async_show_form(
-            step_id="select_site",
-            data_schema=probatio.Schema(
-                {probatio.Required(CONF_SITE_ID): SelectSelector(SelectSelectorConfig(options=options))}
-            ),
-        )
-
-    async def async_step_reauth(
-        self, entry_data: Mapping[str, Any]
-    ) -> ConfigFlowResult:
-        """Start reauthentication for the entry's access type."""
+    async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> ConfigFlowResult:
+        """The refresh token was rejected: approve access again."""
+        self._client_id = entry_data[CONF_CLIENT_ID]
+        self._client_secret = entry_data[CONF_CLIENT_SECRET]
+        self._redirect_uri = entry_data.get(CONF_REDIRECT_URI, DEFAULT_REDIRECT_URI)
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Ask for a new API key, or confirm and restart OAuth."""
-        return await self._async_step_credentials("reauth_confirm", user_input)
-
-    async def async_step_reconfigure(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Replace the credentials of an existing site."""
-        return await self._async_step_credentials("reconfigure", user_input)
-
-    async def _async_step_credentials(
-        self, step_id: str, user_input: dict[str, Any] | None
-    ) -> ConfigFlowResult:
-        entry = self._existing_entry()
-        site_id = int(entry.data[CONF_SITE_ID])
-        if entry.data.get(CONF_AUTH_TYPE) == AUTH_TYPE_OAUTH:
-            if user_input is None:
-                return self.async_show_form(
-                    step_id=step_id,
-                    description_placeholders={"site_id": str(site_id)},
-                )
-            return await self.async_step_pick_implementation()
+        """Same paste step, then update the existing entry."""
         errors: dict[str, str] = {}
+        entry = self._get_reauth_entry()
         if user_input is not None:
-            api_key = user_input[CONF_API_KEY].strip()
-            await self.async_set_unique_id(str(site_id))
-            self._abort_if_unique_id_mismatch()
-            errors, metadata = await self._async_validate_site(ApiKeyAuth(api_key), site_id)
-            if metadata is not None:
+            user_input = {**user_input, CONF_SITE_ID_INPUT: entry.data[CONF_SITE_ID]}
+            result = await self._exchange(user_input, errors)
+            if result is not None:
+                token, site_id, _site, _calls = result
+                if site_id != str(entry.data[CONF_SITE_ID]):
+                    return self.async_abort(reason="wrong_site")
                 return self.async_update_reload_and_abort(
-                    entry, data_updates={CONF_API_KEY: api_key}
+                    entry,
+                    data_updates={
+                        CONF_TOKEN: token.as_dict(),
+                        CONF_GRANTED_AT: dt_util.utcnow().isoformat(),
+                    },
                 )
         return self.async_show_form(
-            step_id=step_id,
-            data_schema=API_KEY_SCHEMA,
+            step_id="reauth_confirm",
+            data_schema=_authorize_schema(False),
             errors=errors,
-            description_placeholders={"site_id": str(site_id)},
+            description_placeholders={
+                "url": authorize_url(self._client_id, self._redirect_uri, self._state),
+                "redirect": self._redirect_uri,
+            },
         )
 
-    def _existing_entry(self) -> ConfigEntry:
-        if self.source == SOURCE_REAUTH:
-            return self._get_reauth_entry()
-        return self._get_reconfigure_entry()
 
-    def _client(self, auth: AuthProvider) -> SolarEdgeClient:
-        return SolarEdgeClient(async_get_clientsession(self.hass), auth)
+class SolarEdgeOptionsFlow(OptionsFlow):
+    """Pick sensor groups and the polling mode, then confirm the computed interval."""
 
-    def _bearer(self) -> BearerTokenAuth:
-        return BearerTokenAuth(_StaticToken(str(self._oauth_data[CONF_TOKEN]["access_token"])))
+    def __init__(self) -> None:
+        """Hold the pending options between the form and the summary."""
+        self._pending: dict[str, Any] = {}
 
-    async def _async_validate_site(
-        self, auth: AuthProvider, site_id: int
-    ) -> tuple[dict[str, str], SiteMetadata | None]:
-        try:
-            metadata = await self._client(auth).async_get_site(site_id)
-        except SolarEdgeError as err:
-            return {"base": _error_key(err)}, None
-        return {}, metadata
-
-
-def _error_key(err: SolarEdgeError) -> str:
-    if isinstance(err, SolarEdgeAuthenticationError):
-        return "invalid_auth"
-    if isinstance(err, SolarEdgeForbiddenError):
-        return "site_forbidden"
-    if isinstance(err, SolarEdgeCreditLimitError):
-        return "credit_limit"
-    if isinstance(err, SolarEdgeConnectionError):
-        return "cannot_connect"
-    _LOGGER.error("Unexpected response from the SolarEdge API: %s", err)
-    return "unknown"
-
-
-class SolarEdgeOptionsFlow(OptionsFlowWithReload):
-    """Tune polling against the monthly credit budget."""
-
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Show and store the polling options."""
-        if user_input is not None:
-            return self.async_create_entry(
-                data={
-                    CONF_SCAN_INTERVAL_MINUTES: int(user_input[CONF_SCAN_INTERVAL_MINUTES]),
-                    CONF_DEVICE_TELEMETRY: user_input[CONF_DEVICE_TELEMETRY],
-                }
-            )
-        options = self.config_entry.options
-        schema = probatio.Schema(
+    def _schema(self, current: Options) -> vol.Schema:
+        return vol.Schema(
             {
-                probatio.Required(
-                    CONF_SCAN_INTERVAL_MINUTES,
-                    default=options.get(
-                        CONF_SCAN_INTERVAL_MINUTES, DEFAULT_SCAN_INTERVAL_MINUTES
-                    ),
+                vol.Required(CONF_POLL_MODE, default=current.mode): SelectSelector(
+                    SelectSelectorConfig(
+                        options=[MODE_FIXED, MODE_ADAPTIVE],
+                        mode=SelectSelectorMode.LIST,
+                        translation_key=CONF_POLL_MODE,
+                    )
+                ),
+                vol.Required(CONF_TOTALS, default=current.totals): BooleanSelector(),
+                vol.Required(CONF_ALERTS, default=current.alerts): BooleanSelector(),
+                vol.Required(CONF_OVERVIEW, default=current.overview): BooleanSelector(),
+                vol.Required(CONF_STORAGE, default=current.storage): BooleanSelector(),
+                vol.Required(
+                    CONF_MONTHLY_CREDITS, default=current.monthly_credits
+                ): NumberSelector(
+                    NumberSelectorConfig(min=100, max=1_000_000, step=1, mode=NumberSelectorMode.BOX)
+                ),
+                vol.Required(CONF_BILLING_DAY, default=current.billing_day): NumberSelector(
+                    NumberSelectorConfig(min=1, max=31, step=1, mode=NumberSelectorMode.BOX)
+                ),
+                vol.Required(
+                    CONF_RESERVE_PERCENT, default=current.reserve_percent
                 ): NumberSelector(
                     NumberSelectorConfig(
-                        min=MIN_SCAN_INTERVAL_MINUTES,
-                        max=MAX_SCAN_INTERVAL_MINUTES,
+                        min=0, max=50, step=1, unit_of_measurement="%", mode=NumberSelectorMode.SLIDER
+                    )
+                ),
+                vol.Required(CONF_MIN_INTERVAL, default=current.min_interval): NumberSelector(
+                    NumberSelectorConfig(
+                        min=MIN_INTERVAL_FLOOR,
+                        max=120,
                         step=1,
                         unit_of_measurement="min",
                         mode=NumberSelectorMode.BOX,
                     )
                 ),
-                probatio.Required(
-                    CONF_DEVICE_TELEMETRY,
-                    default=options.get(CONF_DEVICE_TELEMETRY, DEFAULT_DEVICE_TELEMETRY),
-                ): BooleanSelector(),
             }
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """The settings form."""
+        entry = self.config_entry
+        current = Options.from_mapping(dict(entry.options), default_billing_day(entry))
+        if user_input is not None:
+            self._pending = {
+                **user_input,
+                CONF_MONTHLY_CREDITS: int(user_input[CONF_MONTHLY_CREDITS]),
+                CONF_BILLING_DAY: int(user_input[CONF_BILLING_DAY]),
+                CONF_MIN_INTERVAL: int(user_input[CONF_MIN_INTERVAL]),
+                CONF_RESERVE_PERCENT: int(user_input[CONF_RESERVE_PERCENT]),
+            }
+            return await self.async_step_confirm()
+        coordinator = entry.runtime_data
+        return self.async_show_form(
+            step_id="init",
+            data_schema=self._schema(current),
+            description_placeholders=options_preview(coordinator, dict(entry.options)),
+        )
+
+    async def async_step_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show what the new settings mean for the polling interval, then save."""
+        if user_input is not None:
+            return self.async_create_entry(data=self._pending)
+        coordinator = self.config_entry.runtime_data
+        return self.async_show_form(
+            step_id="confirm",
+            data_schema=vol.Schema({}),
+            description_placeholders=options_preview(coordinator, self._pending),
+        )
+

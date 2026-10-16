@@ -22,7 +22,7 @@ class SolarEdgeResponseError(SolarEdgeError):
 
 
 class SolarEdgeAuthenticationError(SolarEdgeResponseError):
-    """HTTP 401: the API key or OAuth token is missing, invalid, expired, or revoked."""
+    """HTTP 401: the OAuth token is missing, invalid, expired, or revoked."""
 
 
 class SolarEdgeForbiddenError(SolarEdgeResponseError):
@@ -40,3 +40,14 @@ class SolarEdgeRateLimitError(SolarEdgeResponseError):
 
 class SolarEdgeCreditLimitError(SolarEdgeResponseError):
     """HTTP 429 with the monthly credit quota exhausted; retrying will not help."""
+
+
+class SolarEdgeOAuthError(SolarEdgeError):
+    """The token endpoint refused the code or refresh token (re-authorization needed)."""
+
+    def __init__(self, status: int, error: str, description: str) -> None:
+        """Store the OAuth error code and description, never the token itself."""
+        super().__init__(f"HTTP {status}: {error} ({description})")
+        self.status = status
+        self.error = error
+        self.description = description

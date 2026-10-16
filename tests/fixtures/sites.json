@@ -1,4 +1,0 @@
-{"sites": {"count": 2, "site": [
-  {"siteId": 1234567, "name": "Example Home", "activationStatus": "ACTIVE"},
-  {"siteId": 7654321, "name": "Example Barn", "activationStatus": "ACTIVE"}
-]}}

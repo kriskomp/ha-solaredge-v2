@@ -1,172 +1,214 @@
 {
-  "application_credentials": {
-    "description": "SolarEdge Site Access uses OAuth 2.0. Sign in to the [SolarEdge developer console]({developer_console}) with your mySolarEdge account, create a Site Access application with the SITE_DATA and DEVICE_DATA scopes, and set its Redirect URI to `{redirect_url}`. Enter the Client ID and the Client Secret (shown only once) here. The [Homeowner and Self-Access Guide]({self_access_guide}) walks through each screen."
-  },
   "config": {
     "step": {
       "user": {
-        "title": "Choose the SolarEdge access type",
-        "description": "Homeowners use Site Access (OAuth). Installers and fleet owners with a Fleet Access application use an App API Key. V1 site API keys do not work with V2.",
-        "menu_options": {
-          "oauth": "Site Access (OAuth, for homeowners)",
-          "api_key": "Fleet Access (App API Key)"
+        "title": "SolarEdge application credentials",
+        "description": "Create a **Site Access** application in the [SolarEdge developer console]({console}) with the scopes SITE_DATA and DEVICE_DATA. Register the redirect URL `http://localhost/callback` (it does not need to exist) and enter the Client ID and Client Secret here.",
+        "data": {
+          "client_id": "Client ID",
+          "client_secret": "Client Secret",
+          "redirect_uri": "Redirect URL registered in the console"
         }
       },
-      "pick_implementation": {
-        "title": "Pick authentication method"
-      },
-      "site": {
-        "title": "SolarEdge site",
-        "description": "Enter the Site ID you approved on the SolarEdge consent screen. It is the number in the monitoring portal address and in the site_id value of the page SolarEdge redirected to.",
+      "authorize": {
+        "title": "Approve access",
+        "description": "1. [Open the SolarEdge consent page]({url}), sign in with your mySolarEdge account and click **Approve**.\n2. The browser then opens `{redirect}?code=...&site_id=...` and shows a connection error - that is expected.\n3. Copy the **whole address** from the browser's address bar and paste it below. The code is valid only for a short time.",
         "data": {
+          "redirect_url": "Address from the browser's address bar",
           "site_id": "Site ID"
-        },
-        "data_description": {
-          "site_id": "The numeric SolarEdge Monitoring site ID."
-        }
-      },
-      "api_key": {
-        "title": "Fleet Access App API Key",
-        "description": "Create a Fleet Access application in the SolarEdge developer console and paste its App API Key. The key is shown only once.",
-        "data": {
-          "api_key": "App API Key"
-        },
-        "data_description": {
-          "api_key": "Sent as the X-API-Key header; it is never placed in a URL."
-        }
-      },
-      "select_site": {
-        "title": "Choose a site",
-        "data": {
-          "site_id": "Site"
-        },
-        "data_description": {
-          "site_id": "Each site is a separate entry. Add the integration again for another site."
         }
       },
       "reauth_confirm": {
-        "title": "Reauthenticate SolarEdge site {site_id}",
-        "description": "SolarEdge rejected the stored credentials for site {site_id}. For Site Access, submit to sign in and approve again. For Fleet Access, enter a new App API Key.",
+        "title": "Approve access again",
+        "description": "SolarEdge rejected the stored token (it expires after 30 days without use or when the 24-month consent ends).\n\n1. [Open the SolarEdge consent page]({url}) and click **Approve**.\n2. Paste the whole address the browser lands on (`{redirect}?code=...`).",
         "data": {
-          "api_key": "App API Key"
-        },
-        "data_description": {
-          "api_key": "A Fleet Access App API Key that can read site {site_id}."
-        }
-      },
-      "reconfigure": {
-        "title": "Replace credentials for site {site_id}",
-        "description": "For Site Access, submit to sign in and approve again. For Fleet Access, enter the new App API Key.",
-        "data": {
-          "api_key": "App API Key"
-        },
-        "data_description": {
-          "api_key": "A Fleet Access App API Key that can read site {site_id}."
+          "redirect_url": "Address from the browser's address bar"
         }
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to the SolarEdge API.",
-      "invalid_auth": "SolarEdge rejected the credentials.",
-      "site_forbidden": "These credentials cannot read this site. Check the Site ID and the scopes granted.",
-      "credit_limit": "The developer account has used its monthly API credits.",
-      "no_sites": "The API key has access to no sites.",
-      "unknown": "Unexpected error."
+      "invalid_redirect": "No authorization code found in the pasted text.",
+      "site_id_missing": "The address has no site_id; enter the Site ID shown on the consent page.",
+      "invalid_code": "SolarEdge rejected the code (expired, already used, or the Client Secret / redirect URL do not match). Open the consent page again.",
+      "no_site_access": "These credentials cannot read this site.",
+      "cannot_connect": "Could not reach SolarEdge."
     },
     "abort": {
       "already_configured": "This site is already configured.",
-      "reauth_successful": "Reauthentication was successful.",
-      "reconfigure_successful": "Reconfiguration was successful.",
-      "unique_id_mismatch": "The credentials belong to a different site.",
-      "missing_credentials": "Add application credentials (the Client ID and Client Secret of your SolarEdge Site Access application) first.",
-      "missing_configuration": "The integration is not configured. Follow the documentation.",
-      "authorize_url_timeout": "Timeout while generating an authorization URL.",
-      "no_url_available": "No URL available. For information about this error, [check the help section]({docs_url}).",
-      "oauth_error": "Received invalid token data.",
-      "oauth_failed": "Error while obtaining the access token.",
-      "oauth_timeout": "Timeout while resolving the OAuth token.",
-      "oauth_unauthorized": "OAuth authorization error while obtaining the access token.",
-      "user_rejected_authorize": "Account linking rejected: {error}",
-      "oauth_invalid_auth": "SolarEdge rejected the new token.",
-      "oauth_site_forbidden": "The new authorization does not cover this site. Approve the same site again.",
-      "oauth_cannot_connect": "Failed to connect to the SolarEdge API.",
-      "oauth_credit_limit": "The developer account has used its monthly API credits.",
-      "oauth_unknown": "Unexpected error."
+      "reauth_successful": "Access renewed.",
+      "wrong_site": "You approved a different site than the one configured."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Polling and credits",
-        "description": "Every API call costs one credit. The Free tier allows 2,000 credits a month; the defaults use about 1,860 in a 30-day month for one site.",
+        "title": "Polling and sensors",
+        "description": "Credits used this cycle: **{used} / {limit}**. Each daytime poll costs **{calls_per_poll}** credit(s), plus about **{daily_fixed}** credit(s) a day for daily data.\n\nWith the current settings: fixed mode polls every **{fixed} min**, adaptive mode would poll every **{adaptive} min** right now. Projected use at the end of the cycle: **{projected}**.\n\nThe more groups you enable, the less often the integration can poll within the same limit.",
         "data": {
-          "scan_interval_minutes": "Update interval",
-          "device_telemetry": "Per-device telemetry"
-        },
-        "data_description": {
-          "scan_interval_minutes": "How often production, consumption, and power are read. Each update costs two credits, plus one per device family when telemetry is on.",
-          "device_telemetry": "Add inverter, meter, and battery sensors. Costs up to three extra credits per update and needs the DEVICE_DATA scope."
+          "poll_mode": "Polling mode",
+          "totals": "Energy this month / this year / lifetime (1 credit a day)",
+          "alerts": "Open alerts (1 credit a day)",
+          "overview": "Consumption, import, export, self-consumption - sites with a meter only (+1 credit per poll)",
+          "storage": "Battery (+1 credit per poll, experimental)",
+          "monthly_credits": "Monthly credit limit of your plan",
+          "billing_day": "Day of month the credit cycle starts (see the developer portal Dashboard)",
+          "reserve_percent": "Reserve kept unused",
+          "min_interval": "Shortest allowed interval"
         }
+      },
+      "confirm": {
+        "title": "Confirm",
+        "description": "With these settings:\n\n- fixed mode: a poll every **{fixed} min** (sized for the longest day of the year)\n- adaptive mode: a poll every **{adaptive} min** right now\n- one poll costs **{calls_per_poll}** credit(s); daily data about **{daily_fixed}**\n- credits used: **{used} / {limit}**, projected at the end of the cycle: **{projected}**\n\nSubmit to save."
+      }
+    }
+  },
+  "selector": {
+    "poll_mode": {
+      "options": {
+        "fixed": "Fixed - one interval all year, sized for the longest day",
+        "adaptive": "Adaptive - spread the remaining credits over the remaining daylight"
       }
     }
   },
   "entity": {
     "sensor": {
-      "current_power": { "name": "Current power" },
-      "production_today": { "name": "Production today" },
-      "consumption_today": { "name": "Consumption today" },
-      "export_today": { "name": "Exported to grid today" },
-      "import_today": { "name": "Imported from grid today" },
-      "self_consumption_today": { "name": "Self-consumed today" },
-      "to_storage_today": { "name": "Charged to storage today" },
-      "from_storage_today": { "name": "Consumed from storage today" },
-      "lifetime_energy": { "name": "Lifetime production" },
-      "peak_power": { "name": "Peak power" },
-      "last_update": { "name": "Last update from site" },
-      "open_alerts": { "name": "Open alerts" },
-      "inverter_power": { "name": "AC power" },
-      "inverter_energy_today": { "name": "Energy today" },
-      "inverter_voltage": { "name": "AC voltage" },
-      "inverter_current": { "name": "AC current" },
-      "inverter_frequency": { "name": "Grid frequency" },
-      "meter_production_power": { "name": "Production power" },
-      "meter_consumption_power": { "name": "Consumption power" },
-      "meter_import_power": { "name": "Import power" },
-      "meter_export_power": { "name": "Export power" },
-      "meter_production_energy_today": { "name": "Production today" },
-      "meter_consumption_energy_today": { "name": "Consumption today" },
-      "meter_import_energy_today": { "name": "Import today" },
-      "meter_export_energy_today": { "name": "Export today" },
-      "battery_charge_power": { "name": "Charge power" },
-      "battery_discharge_power": { "name": "Discharge power" },
-      "battery_state_of_energy": { "name": "State of energy" },
-      "battery_remaining_energy": { "name": "Remaining energy" },
-      "battery_charge_energy_today": { "name": "Charged today" },
-      "battery_discharge_energy_today": { "name": "Discharged today" }
+      "current_power": {
+        "name": "Current power"
+      },
+      "energy_today": {
+        "name": "Energy today"
+      },
+      "peak_power_today": {
+        "name": "Peak power today"
+      },
+      "energy_this_month": {
+        "name": "Energy this month"
+      },
+      "energy_this_year": {
+        "name": "Energy this year"
+      },
+      "lifetime_energy": {
+        "name": "Lifetime energy"
+      },
+      "open_alerts": {
+        "name": "Open alerts"
+      },
+      "consumption_today": {
+        "name": "Consumption today"
+      },
+      "self_consumption_today": {
+        "name": "Self-consumption today"
+      },
+      "export_today": {
+        "name": "Exported today"
+      },
+      "import_today": {
+        "name": "Imported today"
+      },
+      "battery_state_of_energy": {
+        "name": "Battery state of energy"
+      },
+      "battery_charge_power": {
+        "name": "Battery charge power"
+      },
+      "battery_discharge_power": {
+        "name": "Battery discharge power"
+      },
+      "credits_used": {
+        "name": "API credits used"
+      },
+      "credits_remaining": {
+        "name": "API credits remaining"
+      },
+      "credits_projected": {
+        "name": "API credits projected"
+      },
+      "credit_cycle_end": {
+        "name": "Credit cycle resets"
+      },
+      "poll_interval": {
+        "name": "Poll interval"
+      },
+      "last_poll": {
+        "name": "Last poll"
+      },
+      "next_poll": {
+        "name": "Next poll"
+      },
+      "data_time": {
+        "name": "Data time"
+      },
+      "consent_expires": {
+        "name": "Consent expires"
+      },
+      "ac_voltage": {
+        "name": "AC voltage"
+      },
+      "ac_current": {
+        "name": "AC current"
+      },
+      "ac_frequency": {
+        "name": "AC frequency"
+      },
+      "inverter_power": {
+        "name": "Power"
+      },
+      "inverter_energy_today": {
+        "name": "Energy today"
+      }
     }
   },
   "exceptions": {
     "auth_failed": {
-      "message": "SolarEdge rejected the stored credentials; reauthentication is required."
+      "message": "SolarEdge rejected the token; re-authorize the integration."
     },
-    "credit_limit": {
-      "message": "The SolarEdge developer account has used its monthly API credits."
+    "credits_exhausted": {
+      "message": "The monthly API credits are used up; polling resumes when the cycle resets."
     },
     "rate_limited": {
-      "message": "The SolarEdge API per-minute call limit was reached."
+      "message": "SolarEdge per-minute rate limit hit."
     },
     "update_failed": {
-      "message": "Error communicating with the SolarEdge API: {error}"
+      "message": "Updating from SolarEdge failed: {error}"
+    },
+    "entry_not_found": {
+      "message": "Choose exactly one SolarEdge site (config_entry_id)."
     }
   },
   "issues": {
-    "credit_limit": {
-      "title": "SolarEdge monthly API credits used up",
-      "description": "SolarEdge refused updates for site {site_id} because the developer account has no monthly credits left. Updates retry every six hours and resume when the billing cycle resets. To avoid this, raise the update interval or turn off per-device telemetry in the integration options, or move the developer account to a higher tier."
+    "credits_exhausted": {
+      "title": "SolarEdge API credits used up",
+      "description": "SolarEdge refused further calls this month. Polling resumes on {reset}. Consider fewer sensor groups or a larger reserve in the integration options."
     },
-    "device_scope_missing": {
-      "title": "SolarEdge device telemetry not permitted",
-      "description": "SolarEdge refused device telemetry for site {site_id}. Site Access tokens need the DEVICE_DATA scope. Reconfigure the entry and approve both scopes, or turn off per-device telemetry in the options. Site sensors keep working."
+    "consent_expiring": {
+      "title": "SolarEdge consent expires soon",
+      "description": "The 24-month Site Access consent ends on {date}. Re-authorize the integration (Settings > Devices & services > SolarEdge Monitoring API v2 > Reconfigure / Re-authenticate) before then."
+    }
+  },
+  "services": {
+    "set_credits_used": {
+      "name": "Set credits used",
+      "description": "Correct the local credit counter with the number shown in the SolarEdge developer portal.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Site",
+          "description": "Only needed with more than one site."
+        },
+        "used": {
+          "name": "Credits used",
+          "description": "Credits used in the current cycle according to the portal."
+        }
+      }
+    },
+    "refresh": {
+      "name": "Poll now",
+      "description": "Poll SolarEdge immediately (costs credits).",
+      "fields": {
+        "config_entry_id": {
+          "name": "Site",
+          "description": "Only needed with more than one site."
+        }
+      }
     }
   }
 }

@@ -1,4 +1,1 @@
-# Security-sensitive runtime and delivery surfaces require owner review.
-/custom_components/solaredge_v2/ @trooperthorn
-/.github/workflows/ @trooperthorn
-/SECURITY.md @trooperthorn
+* @kriskomp

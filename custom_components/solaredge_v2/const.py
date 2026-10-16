@@ -10,25 +10,41 @@ DOMAIN: Final = "solaredge_v2"
 LOGGER = logging.getLogger(__package__)
 MANUFACTURER: Final = "SolarEdge"
 
-OAUTH2_AUTHORIZE: Final = "https://connect.solaredge.com/authorize"
-OAUTH2_TOKEN: Final = "https://monitoringapi.solaredge.com/v2/oauth2/token"
-OAUTH2_SCOPES: Final = "SITE_DATA DEVICE_DATA"
-OAUTH2_ACCESS_DURATION_MONTHS: Final = "24"
+STORAGE_VERSION: Final = 1
 
+# Entry data
 CONF_SITE_ID: Final = "site_id"
-CONF_AUTH_TYPE: Final = "auth_type"
-AUTH_TYPE_API_KEY: Final = "api_key"
-AUTH_TYPE_OAUTH: Final = "oauth"
+CONF_REDIRECT_URI: Final = "redirect_uri"
+CONF_TOKEN: Final = "token"
+CONF_GRANTED_AT: Final = "granted_at"
+CONF_INITIAL: Final = "initial"  # site body + calls spent by the setup flow
 
-CONF_SCAN_INTERVAL_MINUTES: Final = "scan_interval_minutes"
-CONF_DEVICE_TELEMETRY: Final = "device_telemetry"
-DEFAULT_SCAN_INTERVAL_MINUTES: Final = 60
-MIN_SCAN_INTERVAL_MINUTES: Final = 15
-MAX_SCAN_INTERVAL_MINUTES: Final = 360
-DEFAULT_DEVICE_TELEMETRY: Final = False
+# Options
+CONF_POLL_MODE: Final = "poll_mode"
+CONF_MONTHLY_CREDITS: Final = "monthly_credits"
+CONF_BILLING_DAY: Final = "billing_day"
+CONF_RESERVE_PERCENT: Final = "reserve_percent"
+CONF_MIN_INTERVAL: Final = "min_interval"
+CONF_TOTALS: Final = "totals"
+CONF_ALERTS: Final = "alerts"
+CONF_OVERVIEW: Final = "overview"
+CONF_STORAGE: Final = "storage"
 
-SLOW_UPDATE_INTERVAL: Final = timedelta(hours=6)
-INVENTORY_UPDATE_INTERVAL: Final = timedelta(hours=12)
+DEFAULT_MONTHLY_CREDITS: Final = 2000
+DEFAULT_RESERVE_PERCENT: Final = 10
+DEFAULT_MIN_INTERVAL: Final = 10
+MIN_INTERVAL_FLOOR: Final = 5
 
-ISSUE_CREDIT_LIMIT: Final = "credit_limit"
-ISSUE_SCOPE_MISSING: Final = "device_scope_missing"
+GRANT_MONTHS: Final = 24
+CONSENT_WARNING: Final = timedelta(days=30)
+TOKEN_KEEPALIVE: Final = timedelta(days=20)  # refresh tokens die after 30 days unused
+SITE_REFRESH: Final = timedelta(days=7)
+POWER_STALE: Final = timedelta(minutes=60)
+
+ISSUE_CREDITS: Final = "credits_exhausted"
+ISSUE_CONSENT: Final = "consent_expiring"
+
+SERVICE_SET_CREDITS: Final = "set_credits_used"
+SERVICE_REFRESH: Final = "refresh"
+ATTR_CONFIG_ENTRY_ID: Final = "config_entry_id"
+ATTR_USED: Final = "used"

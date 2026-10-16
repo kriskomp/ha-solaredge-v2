@@ -1,6 +1,0 @@
-{"period": {"from": "2026-09-29T00:00:00-05:00", "to": "2026-09-29T12:50:00-05:00"}, "resolution": "QUARTER_HOUR",
- "storage": {"BATT-001": {
-  "chargePower": {"unit": "W", "values": [{"timestamp": "2026-09-29T12:15:00-05:00", "value": 3000}, {"timestamp": "2026-09-29T12:30:00-05:00", "value": 2750}]},
-  "stateOfEnergy": {"unit": "PERCENTAGE", "values": [{"timestamp": "2026-09-29T12:30:00-05:00", "value": 67.8}]},
-  "remainingEnergy": {"unit": "KWH", "values": [{"timestamp": "2026-09-29T12:30:00-05:00", "value": 6.5}]}
- }}}

@@ -1,16 +1,26 @@
-"""Async client for the SolarEdge Monitoring API v2 (Basic Monitoring)."""
+"""Async client for the SolarEdge Monitoring API v2.
+
+Facts verified against the live API on 2026-10-16:
+
+* ``from``/``to`` must be an Instant (``2026-10-16T05:53:19Z`` or with an
+  offset). Offset-free local time is rejected with HTTP 400.
+* QUARTER_HOUR data for a whole day (more than 12 h) is accepted for
+  ``/power`` and ``/inverters/telemetry``.
+* ``resolution=MONTH`` accepts at most 3 years; ``YEAR`` is unlimited.
+* The only rate-limit headers are ``x-ratelimit-limit-minute`` (10 on the Free
+  tier) and ``x-ratelimit-remaining-minute``. There is no monthly counter.
+"""
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Sequence
-from datetime import datetime
+from collections.abc import Awaitable, Callable, Sequence
+from datetime import UTC, datetime
 from http import HTTPStatus
 from typing import Any
 
 from aiohttp import ClientError, ClientResponse, ClientSession
 
-from .auth import AuthProvider
 from .exceptions import (
     SolarEdgeAuthenticationError,
     SolarEdgeConnectionError,
@@ -19,50 +29,61 @@ from .exceptions import (
     SolarEdgeRateLimitError,
     SolarEdgeResponseError,
 )
-from .models import (
-    Alert,
-    Device,
-    DeviceType,
-    Series,
-    SiteMetadata,
-    SiteOverview,
-    SiteSummary,
-    Telemetry,
-    parse_telemetry,
-)
 
 BASE_URL = "https://monitoringapi.solaredge.com/v2"
 DEFAULT_TIMEOUT = 30.0
-SITES_PAGE_SIZE = 1000
+
+TokenGetter = Callable[[], Awaitable[str]]
+CallListener = Callable[[str, int], None]
+
+
+def instant(value: datetime) -> str:
+    """Format an aware datetime as the UTC Instant the API expects."""
+    if value.tzinfo is None:
+        raise ValueError("naive datetime")
+    return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def window(start: datetime, end: datetime) -> list[tuple[str, str]]:
+    """The from/to query pair."""
+    return [("from", instant(start)), ("to", instant(end))]
 
 
 class SolarEdgeClient:
-    """One authenticated view of the V2 API; every call costs one credit."""
+    """One authenticated view of the V2 API; every call that reaches it costs a credit."""
 
     def __init__(
         self,
         session: ClientSession,
-        auth: AuthProvider,
+        token_getter: TokenGetter,
         *,
+        on_call: CallListener | None = None,
         base_url: str = BASE_URL,
         timeout: float = DEFAULT_TIMEOUT,
     ) -> None:
         """Use the caller's session; the client never creates or closes one."""
         self._session = session
-        self._auth = auth
+        self._token_getter = token_getter
+        self._on_call = on_call
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
+        self.remaining_minute: int | None = None
 
-    async def _request(
-        self, path: str, params: Sequence[tuple[str, str]] | None = None
-    ) -> Any:
-        headers = {"Accept": "application/json", **await self._auth.async_get_headers()}
+    async def request(self, path: str, params: Sequence[tuple[str, str]] | None = None) -> Any:
+        """GET a path and return the decoded JSON body."""
+        token = await self._token_getter()
+        headers = {"Accept": "application/json", "Authorization": f"Bearer {token}"}
         try:
             async with asyncio.timeout(self._timeout):
                 response = await self._session.get(
-                    f"{self._base_url}{path}", params=params or (), headers=headers
+                    f"{self._base_url}{path}", params=list(params or ()), headers=headers
                 )
                 async with response:
+                    remaining = response.headers.get("x-ratelimit-remaining-minute")
+                    if remaining is not None and remaining.strip().isdigit():
+                        self.remaining_minute = int(remaining)
+                    if self._on_call is not None:
+                        self._on_call(path, response.status)
                     if response.status >= 400:
                         raise await _error_for(response)
                     return await response.json(content_type=None)
@@ -73,119 +94,59 @@ class SolarEdgeClient:
         except ValueError as err:
             raise SolarEdgeResponseError(200, f"Invalid JSON from {path}") from err
 
-    async def async_get_sites(self) -> list[SiteSummary]:
-        """GET /sites, every page. Fleet Access only; OAuth tokens are rejected."""
-        sites: list[SiteSummary] = []
-        page = 1
-        while True:
-            body = await self._request(
-                "/sites", [("page", str(page)), ("sites-in-page", str(SITES_PAGE_SIZE))]
-            )
-            block = body.get("sites") if isinstance(body, dict) else None
-            items = block.get("site") if isinstance(block, dict) else None
-            if not isinstance(items, list):
-                return sites
-            sites.extend(SiteSummary.from_api(i) for i in items if isinstance(i, dict))
-            if len(items) < SITES_PAGE_SIZE:
-                return sites
-            page += 1
-
-    async def async_get_site(self, site_id: int) -> SiteMetadata:
+    async def site(self, site_id: int | str) -> Any:
         """GET /sites/{id}."""
-        body = await self._request(f"/sites/{site_id}")
-        if not isinstance(body, dict) or "siteId" not in body:
-            raise SolarEdgeResponseError(200, "Site metadata without siteId")
-        return SiteMetadata.from_api(body)
+        return await self.request(f"/sites/{site_id}")
 
-    async def async_get_overview(self, site_id: int) -> SiteOverview:
-        """GET /sites/{id}/overview for midnight today (site time) until now."""
-        body = await self._request(f"/sites/{site_id}/overview")
-        return SiteOverview.from_api(body if isinstance(body, dict) else {})
-
-    async def async_get_power(self, site_id: int, start: datetime, end: datetime) -> Series:
-        """GET /sites/{id}/power at QUARTER_HOUR; the API rejects spans over 12 hours."""
-        body = await self._request(
-            f"/sites/{site_id}/power",
-            [("resolution", "QUARTER_HOUR"), ("unit", "W"), *_window(start, end)],
+    async def devices(self, site_id: int | str) -> Any:
+        """GET /sites/{id}/devices for inverters, meters and batteries."""
+        return await self.request(
+            f"/sites/{site_id}/devices",
+            [("types", "INVERTER"), ("types", "METER"), ("types", "BATTERY")],
         )
-        return Series.from_api(body)
 
-    async def async_get_lifetime_energy(
-        self, site_id: int, start: datetime, end: datetime
-    ) -> float | None:
-        """Sum GET /sites/{id}/energy YEAR buckets, the only unlimited span, in Wh."""
-        body = await self._request(
+    async def inverter_telemetry(self, site_id: int | str, start: datetime, end: datetime) -> Any:
+        """GET /sites/{id}/inverters/telemetry at QUARTER_HOUR.
+
+        One call returns power, energy, voltage, current and frequency per inverter.
+        """
+        return await self.request(
+            f"/sites/{site_id}/inverters/telemetry",
+            [("resolution", "QUARTER_HOUR"), *window(start, end)],
+        )
+
+    async def storage_telemetry(self, site_id: int | str, start: datetime, end: datetime) -> Any:
+        """GET /sites/{id}/storage/telemetry at QUARTER_HOUR."""
+        return await self.request(
+            f"/sites/{site_id}/storage/telemetry",
+            [("resolution", "QUARTER_HOUR"), *window(start, end)],
+        )
+
+    async def overview(self, site_id: int | str) -> Any:
+        """GET /sites/{id}/overview (midnight to now, site time)."""
+        return await self.request(f"/sites/{site_id}/overview")
+
+    async def energy(
+        self, site_id: int | str, resolution: str, start: datetime, end: datetime
+    ) -> Any:
+        """GET /sites/{id}/energy in Wh."""
+        return await self.request(
             f"/sites/{site_id}/energy",
-            [("resolution", "YEAR"), ("unit", "WH"), *_window(start, end)],
+            [("resolution", resolution), ("unit", "WH"), *window(start, end)],
         )
-        return Series.from_api(body).total_watt_hours
 
-    async def async_get_devices(
-        self, site_id: int, types: Sequence[DeviceType]
-    ) -> list[Device]:
-        """GET /sites/{id}/devices; the API returns only inverters unless types is sent."""
-        body = await self._request(
-            f"/sites/{site_id}/devices", [("types", t.value) for t in types]
-        )
-        return [
-            Device.from_api(i)
-            for i in (body if isinstance(body, list) else [])
-            if isinstance(i, dict) and i.get("serialNumber")
-        ]
-
-    async def async_get_open_alerts(self, site_id: int) -> list[Alert]:
-        """GET /sites/{id}/alerts, open alerts only, first page of 100."""
-        body = await self._request(
+    async def open_alerts(self, site_id: int | str) -> Any:
+        """GET /sites/{id}/alerts, open alerts only."""
+        return await self.request(
             f"/sites/{site_id}/alerts", [("only-open", "true"), ("alerts-in-page", "100")]
         )
-        return [
-            Alert.from_api(i)
-            for i in (body if isinstance(body, list) else [])
-            if isinstance(i, dict) and "alertId" in i
-        ]
-
-    async def async_get_inverter_telemetry(
-        self, site_id: int, start: datetime, end: datetime
-    ) -> Telemetry:
-        """GET /sites/{id}/inverters/telemetry at HOUR, which allows up to 24 hours."""
-        return parse_telemetry(
-            await self._telemetry(f"/sites/{site_id}/inverters/telemetry", start, end),
-            "inverters",
-        )
-
-    async def async_get_meter_telemetry(
-        self, site_id: int, start: datetime, end: datetime
-    ) -> Telemetry:
-        """GET /sites/{id}/meters/telemetry at HOUR."""
-        return parse_telemetry(
-            await self._telemetry(f"/sites/{site_id}/meters/telemetry", start, end), "meters"
-        )
-
-    async def async_get_storage_telemetry(
-        self, site_id: int, start: datetime, end: datetime
-    ) -> Telemetry:
-        """GET /sites/{id}/storage/telemetry at HOUR."""
-        return parse_telemetry(
-            await self._telemetry(f"/sites/{site_id}/storage/telemetry", start, end), "storage"
-        )
-
-    async def _telemetry(self, path: str, start: datetime, end: datetime) -> Any:
-        return await self._request(path, [("resolution", "HOUR"), *_window(start, end)])
-
-
-def _window(start: datetime, end: datetime) -> list[tuple[str, str]]:
-    """Format a window as the site-local, offset-free timestamps the API expects."""
-    return [
-        ("from", start.strftime("%Y-%m-%dT%H:%M:%S")),
-        ("to", end.strftime("%Y-%m-%dT%H:%M:%S")),
-    ]
 
 
 async def _error_for(response: ClientResponse) -> SolarEdgeResponseError:
     status = response.status
     try:
         body = await response.json(content_type=None)
-    except ClientError, ValueError:
+    except (ClientError, ValueError):
         body = None
     detail = ""
     if isinstance(body, dict):
@@ -197,9 +158,15 @@ async def _error_for(response: ClientResponse) -> SolarEdgeResponseError:
         return SolarEdgeForbiddenError(status, detail)
     if status == 429:
         remaining = response.headers.get("x-ratelimit-remaining-minute")
-        if remaining is not None and remaining.strip() not in ("", "0"):
-            return SolarEdgeCreditLimitError(status, detail)
         retry_after = response.headers.get("retry-after")
+        # Per-minute window: remaining is 0 and retry-after is sent.
+        # Monthly quota: remaining is above 0 and no retry-after.
+        if (
+            remaining is not None
+            and remaining.strip() not in ("", "0")
+            and not retry_after
+        ):
+            return SolarEdgeCreditLimitError(status, detail)
         return SolarEdgeRateLimitError(
             status, detail, int(retry_after) if retry_after and retry_after.isdigit() else None
         )

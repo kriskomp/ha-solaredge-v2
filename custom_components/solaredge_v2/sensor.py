@@ -24,6 +24,7 @@ from homeassistant.const import (
     UnitOfTime,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -457,7 +458,11 @@ class InverterSensor(CoordinatorEntity[SolarEdgeCoordinator], SensorEntity):
             name=info.get("name") or f"Inverter {serial}",
             serial_number=serial,
             sw_version=info.get("firmwareVersion"),
-            via_device=(DOMAIN, coordinator.site_id),
+            via_device_id=dr.async_get_device_id_by_identifier(
+                coordinator.hass,
+                (DOMAIN, coordinator.site_id),
+                config_entry_id=coordinator.config_entry.entry_id,
+            ),
         )
 
     @property

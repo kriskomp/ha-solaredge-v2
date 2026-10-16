@@ -69,11 +69,12 @@ async def async_migrate_from_core(
             continue
         old = registry.async_get(old_id)
         try:
+            # unique_id is identical in both integrations, so it is not passed
+            # (passing it makes the registry see a clash with the entry itself).
             registry.async_update_entity_platform(
                 old_id,
                 DOMAIN,
                 new_config_entry_id=entry.entry_id,
-                new_unique_id=unique_id,
                 new_device_id=site_device_id,
             )
         except ValueError as err:

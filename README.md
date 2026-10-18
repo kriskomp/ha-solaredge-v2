@@ -1,196 +1,228 @@
-# SolarEdge Monitoring API v2 dla Home Assistant
+# SolarEdge Monitoring API v2 for Home Assistant
 
-Integracja Home Assistant, która czyta dane instalacji SolarEdge przez **Monitoring API v2**
-(`monitoringapi.solaredge.com/v2`). Stare API V1 (`?api_key=`), z którego korzysta wbudowana
-integracja `solaredge`, SolarEdge wyłącza na początku listopada 2026.
+**English** | [Polski](README.pl.md)
 
-Integracja jest zaprojektowana pod **darmowy plan (2000 kredytów miesięcznie)**:
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
+[![Test](https://github.com/kriskomp/ha-solaredge-v2/actions/workflows/test.yml/badge.svg)](https://github.com/kriskomp/ha-solaredge-v2/actions/workflows/test.yml)
+[![Release](https://img.shields.io/github/v/release/kriskomp/ha-solaredge-v2)](https://github.com/kriskomp/ha-solaredge-v2/releases)
 
-- **1 kredyt na odczyt.** Jedno zapytanie o telemetrię falownika (kroki 15-minutowe od północy)
-  daje moc, energię dziś, szczyt dnia oraz napięcie, prąd i częstotliwość.
-- **Odczyty tylko w dzień**, od wschodu do zachodu słońca, plus jeden odczyt końcowy po zachodzie.
-- **Własny licznik kredytów**, bo API nie podaje zużycia miesięcznego. Cykl rozliczeniowy liczony
-  jest od wybranego dnia miesiąca, a licznik można skorygować liczbą z portalu.
-- **Restart HA nie kosztuje kredytów.** Stan zapisywany jest w `.storage`, sensory po restarcie
-  od razu pokazują ostatnie wartości, a następny odczyt odbywa się o `ostatni odczyt + interwał`.
-- **Energia w miesiącu, roku i całkowita** kosztuje 1 kredyt na dobę. Integracja liczy je jako
-  bazę z API plus energię dziś.
-- **Dwa tryby pracy:**
-  - *stały*: jeden interwał przez cały rok, dobrany pod najdłuższy dzień;
-  - *adaptacyjny*: pozostałe kredyty rozkładane na pozostałe godziny dnia w cyklu.
+A Home Assistant integration that reads a SolarEdge site through the **Monitoring API v2**
+(`monitoringapi.solaredge.com/v2`). SolarEdge switches off the old V1 API (`?api_key=`), which
+the built-in `solaredge` integration uses, at the beginning of November 2026.
 
-## Sensory
+The integration is built for the **free plan (2,000 credits a month)**:
 
-| Sensor | Koszt | Uwagi |
+- **One credit per poll.** One call for the inverter telemetry (15-minute steps since midnight)
+  returns power, today's energy, the day's peak, and voltage, current and frequency.
+- **Polls only in daylight**, from sunrise to sunset, plus one final read after sunset.
+- **Its own credit counter**, because the API does not report monthly usage. The billing cycle
+  starts on a day of the month you choose, and you can correct the counter with the number shown
+  in the developer portal.
+- **Restarting Home Assistant costs no credits.** The state is saved in `.storage`. After a
+  restart the sensors show their last values right away, and the next poll happens at
+  `last poll + interval`.
+- **Successor of the built-in `solaredge` integration.** The setup can take over its sensors with
+  the same `entity_id` and their full history, so graphs, statistics and the Energy dashboard
+  continue without a gap.
+- **Energy this month, this year and lifetime** cost one credit a day. The integration builds
+  them from an API baseline plus today's energy.
+- **SolarEdge consent without copy and paste.** Home Assistant receives the redirect itself after
+  you click "Approve".
+- **Two polling modes:**
+  - *fixed*: one interval all year, sized for the longest day;
+  - *adaptive*: the credits left are spread over the daylight left in the cycle.
+
+The integration's interface in Home Assistant (setup, options, sensor names, notifications) is
+available in English and Polish and follows the language set in your Home Assistant profile.
+
+## Sensors
+
+| Sensor | Cost | Notes |
 |---|---|---|
-| Aktualna moc | w odczycie | średnia z 15 minut, ostatni przedział aktualizowany na bieżąco |
-| Energia dziś | w odczycie | suma 15-minutowych Wh z falownika; nadaje się do panelu Energia |
-| Szczyt mocy dziś | w odczycie | atrybut `peak_time` |
-| Napięcie / prąd / częstotliwość AC (na falownik) | w odczycie | |
-| Energia w tym miesiącu / roku / całkowita | 1 kredyt/dobę | opcja (domyślnie włączona) |
-| Otwarte alerty | 1 kredyt/dobę | opcja |
-| Zużycie / import / eksport / autokonsumpcja dziś | +1 kredyt na odczyt | opcja, tylko instalacje z licznikiem |
-| Magazyn energii | +1 kredyt na odczyt | opcja, eksperymentalne |
-| Diagnostyka: wykorzystane, pozostałe i prognoza kredytów, interwał, następny odczyt, czas danych, wygaśnięcie zgody | 0 | |
+| Current power | per poll | 15-minute average, the latest interval is updated as it fills; **0 W** when there has been no data for more than 60 min (night, inverter off) |
+| Energy today | per poll | sum of the inverter's 15-minute Wh; suitable for the Energy dashboard |
+| Peak power today | per poll | attribute `peak_time` |
+| AC voltage / current / frequency (per inverter) | per poll | |
+| Energy this month / this year / lifetime | 1 credit/day | option (on by default) |
+| Open alerts | 1 credit/day | option |
+| Consumption / import / export / self-consumption today | +1 credit per poll | option, only for sites with a meter |
+| Battery | +1 credit per poll | option, experimental |
+| Diagnostics: credits used, remaining and projected, poll interval, next poll, data time, consent expiry | 0 | |
 
-Im więcej grup sensorów płatnych „na odczyt” włączysz, tym rzadziej integracja może odczytywać
-dane. Przed zapisaniem opcji integracja pokazuje wyliczony interwał.
+The more "per poll" sensor groups you enable, the less often the integration can poll. Before
+saving the options, the integration shows the resulting interval.
 
-## Instalacja (HACS)
+## Installation (HACS)
 
-1. HACS → ⋮ → *Custom repositories* → `https://github.com/kriskomp/ha-solaredge-v2`, typ
+1. HACS → ⋮ → *Custom repositories* → `https://github.com/kriskomp/ha-solaredge-v2`, type
    *Integration*.
-2. Zainstaluj **SolarEdge Monitoring API v2** i zrestartuj Home Assistant.
+2. Install **SolarEdge Monitoring API v2** and restart Home Assistant.
 
-Integracja używa domeny `solaredge_v2`, tak jak inne integracje oparte na API v2, więc
-instaluje się tylko jedną z nich. Wbudowana integracja `solaredge` może działać obok.
+The integration uses the domain `solaredge_v2`, like other integrations based on API v2, so only
+one of them can be installed. The built-in `solaredge` integration can run alongside it.
 
-## Konfiguracja
+## Configuration
 
-### 1. Adres zwrotny (Redirect URL): co wpisać
+### 1. Redirect URL: what to enter
 
-Po kliknięciu **Approve** na stronie SolarEdge przeglądarka przechodzi na *adres zwrotny* z
-kodem autoryzacji. Integracja obsługuje dwa warianty:
+After you click **Approve** on the SolarEdge page, the browser goes to the *redirect URL* with an
+authorization code. The integration supports two variants:
 
-| Wariant | Adres zwrotny | Jak działa |
+| Variant | Redirect URL | How it works |
 |---|---|---|
-| **Zalecany** | `https://<adres-twojego-HA>/api/solaredge_v2/callback` | Home Assistant sam odbiera kod i kończy konfigurację, bez przeklejania. |
-| Awaryjny | `http://localhost/callback` | Przeglądarka pokazuje błąd połączenia, a cały adres z paska wklejasz ręcznie w kreatorze. |
+| **Recommended** | `https://<your-HA-address>/api/solaredge_v2/callback` | Home Assistant receives the code and finishes the setup by itself, no copy and paste. |
+| Fallback | `http://localhost/callback` | The browser shows a connection error and you paste the whole address from the address bar into the setup dialog. |
 
-`<adres-twojego-HA>` to adres, pod którym **Twoja przeglądarka** otwiera Home Assistanta przez
-HTTPS. Na przykład:
-- własna domena za reverse proxy (np. `ha.twojadomena.pl`);
-- adres Nabu Casa (`xxxxxxxx.ui.nabu.casa`);
-- DuckDNS (`twojanazwa.duckdns.org`).
+`<your-HA-address>` is the address at which **your browser** opens Home Assistant over HTTPS,
+for example:
+- your own domain behind a reverse proxy (e.g. `ha.example.com`);
+- a Nabu Casa address (`xxxxxxxx.ui.nabu.casa`);
+- DuckDNS (`yourname.duckdns.org`).
 
-Warunki:
-- **tylko HTTPS z publicznie zarejestrowaną domeną**: konsola SolarEdge nie przyjmie adresu IP,
-  `homeassistant.local` ani `http://` (wyjątkiem jest `localhost`);
-- adres musi otwierać się **w przeglądarce, na której klikasz Approve**. Serwery SolarEdge nie
-  łączą się z Home Assistantem, przekierowanie wykonuje przeglądarka;
-- jeśli używasz reverse proxy, ścieżka `/api/...` musi trafiać do Home Assistanta, co jest
-  standardem;
-- w Home Assistancie ustaw ten adres jako **adres zewnętrzny** (*Ustawienia → System → Sieć →
-  Adres URL Home Assistant → Internet*). Kreator sam go wtedy podpowie.
+Requirements:
+- **HTTPS with a publicly registered domain only**: the SolarEdge console does not accept an IP
+  address, `homeassistant.local` or `http://` (except `localhost`);
+- the address must open **in the browser in which you click Approve**. SolarEdge's servers do
+  not connect to Home Assistant; the browser follows the redirect;
+- if you use a reverse proxy, the path `/api/...` must reach Home Assistant, which is the
+  standard setup;
+- in Home Assistant, set this address as the **external URL** (*Settings → System → Network →
+  Home Assistant URL → Internet*). The setup then suggests it automatically.
 
-### 2. Aplikacja w konsoli deweloperskiej SolarEdge
+### 2. Application in the SolarEdge developer console
 
-Na <https://developer.solaredge.com> (logowanie kontem mySolarEdge):
+At <https://developer.solaredge.com> (sign in with your mySolarEdge account):
 
-1. **Create Application**, usługa **Monitoring API**, typ dostępu **Site Access**.
-2. Zakresy **SITE_DATA** i **DEVICE_DATA**.
-3. **Allowed Redirect URL(s)**: wpisz adres zwrotny z punktu 1. Możesz dodać oba warianty
-   (*Add Redirect URL*). Adres musi być **identyczny** z tym w Home Assistancie, łącznie
-   z `https://` i końcówką `/api/solaredge_v2/callback`.
-4. Zapisz **Client ID** i **Client Secret**. Secret pokazywany jest tylko raz (*Download as .env*).
+1. **Create Application**, service **Monitoring API**, access type **Site Access**.
+2. Scopes **SITE_DATA** and **DEVICE_DATA**.
+3. **Allowed Redirect URL(s)**: enter the redirect URL from step 1. You can add both variants
+   (*Add Redirect URL*); then click *Save Changes*. The address must be **identical** to the one
+   in Home Assistant, including `https://` and the `/api/solaredge_v2/callback` ending.
+4. Save the **Client ID** and **Client Secret**. The secret is shown only once (*Download as
+   .env*).
 
-Na stronie *Dashboard* sprawdź **Subscription start date**. Dzień tej daty to dzień miesiąca,
-w którym resetują się kredyty (opcja *billing day*).
+On the *Dashboard* page, check the **Subscription start date**. Its day of the month is the day
+the credits reset (the *billing day* option).
 
-### 3. Dodanie integracji
+### 3. Adding the integration
 
-*Ustawienia → Urządzenia i usługi → Dodaj integrację → SolarEdge Monitoring API v2*:
+*Settings → Devices & services → Add integration → SolarEdge Monitoring API v2*:
 
-1. Wpisz Client ID i Client Secret. Pole **Redirect URL** jest wypełnione adresem zewnętrznym
-   HA z końcówką `/api/solaredge_v2/callback`. Musi być taki sam jak w aplikacji SolarEdge.
-2. **Wariant zalecany:** otworzy się okno SolarEdge. Zaloguj się kontem mySolarEdge i kliknij
-   **Approve**. Zobaczysz stronę „Gotowe”, a kreator w Home Assistancie przejdzie dalej sam.
-3. **Wariant awaryjny (localhost):** po **Approve** przeglądarka pokaże błąd połączenia. Skopiuj
-   **cały adres z paska** (`http://localhost/callback?code=...&site_id=...`) i wklej go w
-   kreatorze. Kod jest ważny krótko.
+1. Enter the Client ID and Client Secret. The **Redirect URL** field is filled with Home
+   Assistant's external URL plus `/api/solaredge_v2/callback`. It must match the one in the
+   SolarEdge application.
+2. **Recommended variant:** a SolarEdge window opens. Sign in with your mySolarEdge account and
+   click **Approve**. You see a "Done" page and the setup in Home Assistant continues by itself.
+3. **Fallback (localhost):** after **Approve** the browser shows a connection error. Copy the
+   **whole address from the address bar** (`http://localhost/callback?code=...&site_id=...`) and
+   paste it into the setup dialog. The code is valid only for a short time.
 
-Jeśli w wariancie zalecanym coś pójdzie nie tak (np. adres nie zgadza się z tym w aplikacji
-SolarEdge), kreator pokaże przyczynę i pozwoli wkleić adres ręcznie.
+If something goes wrong in the recommended variant (for example the address does not match the
+one in the SolarEdge application), the setup shows the reason and lets you paste the address by
+hand.
 
-Dlaczego integracja ma własny adres zwrotny zamiast wbudowanego mechanizmu OAuth w Home
-Assistant? SolarEdge nie odsyła parametru `state`, którego wymaga wbudowany przepływ OAuth (i
-my.home-assistant.io). Sprawdzone 16.10.2026. Integracja przekazuje więc kod do kreatora, który
-właśnie czeka na zgodę.
+Why does the integration have its own redirect address instead of Home Assistant's built-in
+OAuth flow? SolarEdge does not return the `state` parameter that the built-in OAuth flow (and
+my.home-assistant.io) requires; verified on 16.10.2026. The integration therefore hands the code
+to the setup flow that is waiting for the consent.
 
-### Zmiana adresu zwrotnego albo danych aplikacji
+### Changing the redirect URL or the application details
 
-Na karcie integracji: **⋮ → Zmień konfigurację** (*Reconfigure*). Możesz tam zmienić Client ID,
-Client Secret i Redirect URL, np. przejść z `localhost` na adres HA albo zmienić domenę. Potem
-ponownie zatwierdzasz dostęp. Sensory, historia i licznik kredytów zostają.
+On the integration card: **⋮ → Reconfigure**. You can change the Client ID, Client Secret and
+Redirect URL there, for example to switch from `localhost` to your Home Assistant address or to
+a new domain. You then approve access again. Sensors, history and the credit counter stay.
 
-Zmień tu adres zwrotny, jeśli usunąłeś z aplikacji SolarEdge adres, którego integracja używała
-wcześniej. Przy następnej autoryzacji SolarEdge odrzuciłby stary adres.
+Change the redirect URL here if you removed from the SolarEdge application the address the
+integration used before. SolarEdge would reject the old address at the next authorization.
 
-### Ponowna autoryzacja
+### Re-authentication
 
-SolarEdge poprosi o nią, gdy refresh token wygaśnie (po 30 dniach bez użycia) albo gdy skończy
-się 24-miesięczna zgoda. Home Assistant pokaże wtedy powiadomienie. Kreator najpierw poprosi o
-potwierdzenie Redirect URL (z podpowiedzią adresu HA), a potem działa jak przy dodawaniu.
+SolarEdge asks for it when the refresh token expires (after 30 days without use) or when the
+24-month consent ends. Home Assistant shows a notification. The flow first asks you to confirm
+the Redirect URL (suggesting your Home Assistant address) and then works like the initial setup.
 
-### Przejście z wbudowanej integracji `solaredge`
+### Moving from the built-in `solaredge` integration
 
-Jeśli dla tej samej instalacji działa wbudowana integracja SolarEdge (API v1), kreator zaproponuje
-**przejęcie jej sensorów**: aktualna moc, energia dziś, w tym miesiącu, w tym roku i całkowita.
+If the built-in SolarEdge integration (API v1) is set up for the same site, the setup offers to
+**take over its sensors**: current power and energy today, this month, this year and lifetime.
 
-Przejęte encje zachowują **to samo `entity_id`, nazwę, obszar, jednostkę i całą historię**
-(wykresy, statystyki, panel Energia). Dashboardy i automatyzacje działają dalej bez zmian.
+The taken-over entities keep **the same `entity_id`, name, area, unit and their full history**
+(graphs, statistics, Energy dashboard). Dashboards and automations keep working unchanged.
 
-Wbudowana integracja zostaje **wyłączona**, nie usunięta. Usuń ją ręcznie, gdy wszystko działa.
-Jeśli *Naprawy* zaproponują usunięcie statystyk starych sensorów, nie zgadzaj się.
+The built-in integration is **disabled**, not deleted. Delete it yourself once everything works.
+If *Repairs* offers to delete the statistics of the old sensors, do not.
 
-### 4. Opcje
+### 4. Options
 
-*Konfiguruj* na integracji: tryb pracy, grupy sensorów, limit miesięczny, dzień resetu cyklu,
-rezerwa i minimalny interwał. Po zatwierdzeniu formularza integracja pokazuje, jak często
-będzie odczytywać dane przy nowych ustawieniach.
+*Configure* on the integration: polling mode, sensor groups, monthly limit, billing day, reserve
+and minimum interval. After you submit the form, the integration shows how often it will poll
+with the new settings.
 
-## Odświeżanie na żądanie
+## Polling on demand
 
-`homeassistant.update_entity` na sensorach tej integracji **nie wywołuje API**, więc
-automatyzacje „odśwież co X minut” znane z wbudowanej integracji nie zużywają kredytów.
-Odczyt poza harmonogramem: akcja `solaredge_v2.refresh`.
+`homeassistant.update_entity` on this integration's sensors **does not call the API**, so "refresh
+every X minutes" automations kept from the built-in integration do not spend credits. To poll
+outside the schedule, use the `solaredge_v2.refresh` action.
 
-## Akcje
+## Actions
 
-- `solaredge_v2.set_credits_used`: ustawia lokalny licznik na liczbę z portalu
+- `solaredge_v2.set_credits_used`: sets the local counter to the number shown in the portal
   (*Dashboard → Credit cycle*).
-- `solaredge_v2.refresh`: natychmiastowy odczyt (zużywa kredyty).
+- `solaredge_v2.refresh`: polls immediately (spends credits).
 
-## Tokeny i zgoda
+## Cache and credit counter (`.storage`)
 
-- Access token ważny jest 2 h i odnawiany automatycznie.
-- **Każde odświeżenie daje nowy refresh token, a stary od razu przestaje działać.** Integracja
-  zapisuje nowy token natychmiast. Nie używaj tych samych danych jednocześnie w dwóch miejscach
-  (np. w skrypcie testowym i w HA).
-- Refresh token wygasa po 30 dniach nieużywania. Integracja odświeża go profilaktycznie,
-  także wtedy, gdy kredyty się skończyły.
-- Zgoda Site Access trwa maksymalnie 24 miesiące. Na 30 dni przed końcem pojawia się
-  powiadomienie w *Naprawach*.
+Each site has its own private file `/config/.storage/solaredge_v2.<entry_id>` holding:
 
-## Co ustalono testami na żywym API (16.10.2026)
+- **token**: the current access/refresh token pair, saved immediately after every rotation;
+- **credit counter**: cycle start, credits used and whether the limit is exhausted;
+- **readings**: site and inverter data, today's power, energy, peak and V/I/f, the month, year
+  and previous-years baselines, alerts and the time of the last poll.
 
-- `from`/`to` muszą być typu *Instant* (`2026-10-16T05:53:19Z` albo z offsetem). Czas lokalny
-  bez strefy daje HTTP 400.
-- Dane 15-minutowe za cały dzień (ponad 12 h) są akceptowane dla `/power` i
+Rules (the same as in [kriskomp/ha_Pstryk](https://github.com/kriskomp/ha_Pstryk)):
+
+- a request is **counted before it is sent**, and the counter reaches the file within a second,
+  so neither a timeout nor a Home Assistant crash during a poll loses credits;
+- the counter **rather overestimates than underestimates**: failed requests are counted too;
+- a damaged file or a damaged part of it **does not block start-up**: each section is read
+  separately and an unreadable one is skipped with a warning in the log;
+- a failed write is logged and does not stop polling;
+- the file is deleted together with the integration.
+
+## Tokens and consent
+
+- The access token is valid for 2 hours and renewed automatically.
+- **Every refresh returns a new refresh token and the old one stops working at once.** The
+  integration saves the new token immediately. Do not use the same credentials in two places at
+  the same time (for example in a test script and in Home Assistant).
+- A refresh token expires after 30 days without use. The integration refreshes it in time, also
+  while the credits are exhausted.
+- Site Access consent lasts at most 24 months. 30 days before it ends, a notification appears in
+  *Repairs*.
+
+## Findings from tests against the live API (16–18.10.2026)
+
+- `from`/`to` must be an *Instant* (`2026-10-16T05:53:19Z` or with an offset). Local time without
+  a zone returns HTTP 400.
+- 15-minute data for a whole day (more than 12 hours) is accepted for `/power` and
   `/inverters/telemetry`.
-- `resolution=MONTH` przyjmuje okno maksymalnie 3 lat, `YEAR` nie ma limitu.
-- Nagłówki limitów: tylko `x-ratelimit-limit-minute` (10 na planie Free) i
-  `x-ratelimit-remaining-minute`. Licznika miesięcznego nie ma.
-- `GET /sites` z tokenem OAuth zwraca 403 (działa tylko z kluczem Fleet).
-- API v2 nie udostępnia danych optymalizatorów ani bieżącego przepływu mocy
-  (power flow to plan płatny).
+- `resolution=MONTH` accepts a window of at most 3 years; `YEAR` has no limit.
+- Rate-limit headers: only `x-ratelimit-limit-minute` (10 on the Free plan) and
+  `x-ratelimit-remaining-minute`. There is no monthly counter.
+- `GET /sites` with an OAuth token returns 403 (it works only with a Fleet key).
+- API v2 does not provide optimizer data or live power flow (power flow is a paid plan).
+- With the inverter off, or at night, the 15-minute intervals are `"value": null`. API v1 kept
+  showing the last known power in that case.
 
-## Pochodzenie
+## Changelog and releases
 
-Fork [trooperthorn/ha_int_solaredge](https://github.com/trooperthorn/ha_int_solaredge) (MIT).
-Z oryginału pochodzą klient API i modele odpowiedzi. Logowanie, harmonogram, licznik kredytów,
-pamięć podręczna i sensory zostały napisane od nowa.
+See [CHANGELOG.md](CHANGELOG.md) and
+[Releases](https://github.com/kriskomp/ha-solaredge-v2/releases). Versions use the format
+`YYYY.MM.DD.N`. A release (tag `v<version>` with notes from the changelog) is published
+automatically when the version in `manifest.json` changes on `main` and the tests pass.
 
----
+## Origin
 
-## English summary
-
-Home Assistant integration for the SolarEdge Monitoring API v2 (Site Access / OAuth), built
-for the free 2,000-credit plan:
-
-- one credit per poll, with polling only in daylight;
-- a local credit counter with a billing-cycle reset and a portal correction action;
-- no API calls on restart or reload, because state is cached in `.storage`;
-- fixed or adaptive polling interval;
-- authorization by pasting the redirect URL, because SolarEdge does not return the OAuth
-  `state` parameter.
+Fork of [trooperthorn/ha_int_solaredge](https://github.com/trooperthorn/ha_int_solaredge) (MIT).
+The API client and the response models come from the original. Authorization, scheduling, the
+credit counter, the cache and the sensors were rewritten.

@@ -18,10 +18,9 @@ from html import escape
 from http import HTTPStatus
 
 from aiohttp import web
-
-from homeassistant.helpers.http import KEY_HASS, HomeAssistantView
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import UnknownFlow
+from homeassistant.helpers.http import KEY_HASS, HomeAssistantView
 
 from .const import CALLBACK_PATH, DOMAIN, LOGGER
 

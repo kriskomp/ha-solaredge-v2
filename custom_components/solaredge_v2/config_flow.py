@@ -54,6 +54,7 @@ from .api import (
     parse_redirect,
 )
 from .budget import MODE_ADAPTIVE, MODE_FIXED
+from .callback_view import EXTERNAL_STEP
 from .const import (
     CALLBACK_PATH,
     CONF_ALERTS,
@@ -75,7 +76,6 @@ from .const import (
     LOGGER,
     MIN_INTERVAL_FLOOR,
 )
-from .callback_view import EXTERNAL_STEP
 from .coordinator import Options, default_billing_day, options_preview
 from .migrate import core_entry_for_site, migratable_entities
 

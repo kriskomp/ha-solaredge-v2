@@ -11,6 +11,7 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.update_coordinator import UpdateFailed
 import voluptuous as vol
 
+from .callback_view import SolarEdgeCallbackView
 from .const import (
     ATTR_CONFIG_ENTRY_ID,
     ATTR_USED,
@@ -21,7 +22,6 @@ from .const import (
     SERVICE_SET_CREDITS,
     STORAGE_VERSION,
 )
-from .callback_view import SolarEdgeCallbackView
 from .coordinator import SolarEdgeConfigEntry, SolarEdgeCoordinator
 from .migrate import async_migrate_from_core
 

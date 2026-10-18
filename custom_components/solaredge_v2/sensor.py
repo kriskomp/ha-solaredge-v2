@@ -406,6 +406,13 @@ class SiteSensor(CoordinatorEntity[SolarEdgeCoordinator], SensorEntity):
         self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, coordinator.site_id)})
         self._last: float | None = None
 
+    async def async_update(self) -> None:
+        """``homeassistant.update_entity`` must not spend API credits.
+
+        The schedule decides when SolarEdge is read; use the ``solaredge_v2.refresh``
+        action to poll on demand.
+        """
+
     @property
     def available(self) -> bool:
         """Cached values stay visible even when the last poll failed."""
@@ -464,6 +471,13 @@ class InverterSensor(CoordinatorEntity[SolarEdgeCoordinator], SensorEntity):
                 config_entry_id=coordinator.config_entry.entry_id,
             ),
         )
+
+    async def async_update(self) -> None:
+        """``homeassistant.update_entity`` must not spend API credits.
+
+        The schedule decides when SolarEdge is read; use the ``solaredge_v2.refresh``
+        action to poll on demand.
+        """
 
     @property
     def available(self) -> bool:

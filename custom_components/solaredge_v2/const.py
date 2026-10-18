@@ -20,6 +20,7 @@ CONF_GRANTED_AT: Final = "granted_at"
 CONF_INITIAL: Final = "initial"  # site body + calls spent by the setup flow
 CONF_MIGRATE_FROM: Final = "migrate_from"  # built-in solaredge entry to take over
 CORE_DOMAIN: Final = "solaredge"
+CALLBACK_PATH: Final = "/api/solaredge_v2/callback"
 
 # Options
 CONF_POLL_MODE: Final = "poll_mode"

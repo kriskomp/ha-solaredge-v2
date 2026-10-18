@@ -47,31 +47,80 @@ instaluje się tylko jedną z nich. Wbudowana integracja `solaredge` może dzia�
 
 ## Konfiguracja
 
-### 1. Aplikacja w konsoli deweloperskiej SolarEdge
+### 1. Adres zwrotny (Redirect URL): co wpisać
+
+Po kliknięciu **Approve** na stronie SolarEdge przeglądarka przechodzi na *adres zwrotny* z
+kodem autoryzacji. Integracja obsługuje dwa warianty:
+
+| Wariant | Adres zwrotny | Jak działa |
+|---|---|---|
+| **Zalecany** | `https://<adres-twojego-HA>/api/solaredge_v2/callback` | Home Assistant sam odbiera kod i kończy konfigurację, bez przeklejania. |
+| Awaryjny | `http://localhost/callback` | Przeglądarka pokazuje błąd połączenia, a cały adres z paska wklejasz ręcznie w kreatorze. |
+
+`<adres-twojego-HA>` to adres, pod którym **Twoja przeglądarka** otwiera Home Assistanta przez
+HTTPS. Na przykład:
+- własna domena za reverse proxy (np. `ha.twojadomena.pl`);
+- adres Nabu Casa (`xxxxxxxx.ui.nabu.casa`);
+- DuckDNS (`twojanazwa.duckdns.org`).
+
+Warunki:
+- **tylko HTTPS z publicznie zarejestrowaną domeną**: konsola SolarEdge nie przyjmie adresu IP,
+  `homeassistant.local` ani `http://` (wyjątkiem jest `localhost`);
+- adres musi otwierać się **w przeglądarce, na której klikasz Approve**. Serwery SolarEdge nie
+  łączą się z Home Assistantem, przekierowanie wykonuje przeglądarka;
+- jeśli używasz reverse proxy, ścieżka `/api/...` musi trafiać do Home Assistanta, co jest
+  standardem;
+- w Home Assistancie ustaw ten adres jako **adres zewnętrzny** (*Ustawienia → System → Sieć →
+  Adres URL Home Assistant → Internet*). Kreator sam go wtedy podpowie.
+
+### 2. Aplikacja w konsoli deweloperskiej SolarEdge
 
 Na <https://developer.solaredge.com> (logowanie kontem mySolarEdge):
 
-- **Create Application**, usługa **Monitoring API**, typ dostępu **Site Access**;
-- zakresy **SITE_DATA** i **DEVICE_DATA**;
-- *Allowed Redirect URL*: `http://localhost/callback`. Ten adres nie musi istnieć. Konsola
-  przyjmuje `http://` tylko dla `localhost`;
-- zapisz **Client ID** i **Client Secret**. Secret pokazywany jest tylko raz.
+1. **Create Application**, usługa **Monitoring API**, typ dostępu **Site Access**.
+2. Zakresy **SITE_DATA** i **DEVICE_DATA**.
+3. **Allowed Redirect URL(s)**: wpisz adres zwrotny z punktu 1. Możesz dodać oba warianty
+   (*Add Redirect URL*). Adres musi być **identyczny** z tym w Home Assistancie, łącznie
+   z `https://` i końcówką `/api/solaredge_v2/callback`.
+4. Zapisz **Client ID** i **Client Secret**. Secret pokazywany jest tylko raz (*Download as .env*).
 
-Na stronie *Dashboard* sprawdź datę **Subscription start date**. Dzień tej daty to dzień
-miesiąca, w którym resetują się kredyty (opcja *billing day*).
+Na stronie *Dashboard* sprawdź **Subscription start date**. Dzień tej daty to dzień miesiąca,
+w którym resetują się kredyty (opcja *billing day*).
 
-### 2. Dodanie integracji
+### 3. Dodanie integracji
 
 *Ustawienia → Urządzenia i usługi → Dodaj integrację → SolarEdge Monitoring API v2*:
 
-1. Wpisz Client ID, Client Secret i Redirect URL.
-2. Kliknij link do strony zgody, zaloguj się i kliknij **Approve**.
-3. Przeglądarka przejdzie na `http://localhost/callback?code=...&site_id=...` i pokaże błąd
-   połączenia. Tak ma być: skopiuj **cały adres z paska** i wklej go w formularzu. Kod jest
-   ważny krótko.
+1. Wpisz Client ID i Client Secret. Pole **Redirect URL** jest wypełnione adresem zewnętrznym
+   HA z końcówką `/api/solaredge_v2/callback`. Musi być taki sam jak w aplikacji SolarEdge.
+2. **Wariant zalecany:** otworzy się okno SolarEdge. Zaloguj się kontem mySolarEdge i kliknij
+   **Approve**. Zobaczysz stronę „Gotowe”, a kreator w Home Assistancie przejdzie dalej sam.
+3. **Wariant awaryjny (localhost):** po **Approve** przeglądarka pokaże błąd połączenia. Skopiuj
+   **cały adres z paska** (`http://localhost/callback?code=...&site_id=...`) i wklej go w
+   kreatorze. Kod jest ważny krótko.
 
-Dlaczego tak, a nie przez wbudowany mechanizm OAuth w HA? SolarEdge nie odsyła parametru
-`state`, którego wymaga wbudowany przepływ OAuth w Home Assistant. Sprawdzone 16.10.2026.
+Jeśli w wariancie zalecanym coś pójdzie nie tak (np. adres nie zgadza się z tym w aplikacji
+SolarEdge), kreator pokaże przyczynę i pozwoli wkleić adres ręcznie.
+
+Dlaczego integracja ma własny adres zwrotny zamiast wbudowanego mechanizmu OAuth w Home
+Assistant? SolarEdge nie odsyła parametru `state`, którego wymaga wbudowany przepływ OAuth (i
+my.home-assistant.io). Sprawdzone 16.10.2026. Integracja przekazuje więc kod do kreatora, który
+właśnie czeka na zgodę.
+
+### Zmiana adresu zwrotnego albo danych aplikacji
+
+Na karcie integracji: **⋮ → Zmień konfigurację** (*Reconfigure*). Możesz tam zmienić Client ID,
+Client Secret i Redirect URL, np. przejść z `localhost` na adres HA albo zmienić domenę. Potem
+ponownie zatwierdzasz dostęp. Sensory, historia i licznik kredytów zostają.
+
+Zmień tu adres zwrotny, jeśli usunąłeś z aplikacji SolarEdge adres, którego integracja używała
+wcześniej. Przy następnej autoryzacji SolarEdge odrzuciłby stary adres.
+
+### Ponowna autoryzacja
+
+SolarEdge poprosi o nią, gdy refresh token wygaśnie (po 30 dniach bez użycia) albo gdy skończy
+się 24-miesięczna zgoda. Home Assistant pokaże wtedy powiadomienie. Kreator najpierw poprosi o
+potwierdzenie Redirect URL (z podpowiedzią adresu HA), a potem działa jak przy dodawaniu.
 
 ### Przejście z wbudowanej integracji `solaredge`
 
@@ -84,11 +133,17 @@ Przejęte encje zachowują **to samo `entity_id`, nazwę, obszar, jednostkę i c
 Wbudowana integracja zostaje **wyłączona**, nie usunięta. Usuń ją ręcznie, gdy wszystko działa.
 Jeśli *Naprawy* zaproponują usunięcie statystyk starych sensorów, nie zgadzaj się.
 
-### 3. Opcje
+### 4. Opcje
 
 *Konfiguruj* na integracji: tryb pracy, grupy sensorów, limit miesięczny, dzień resetu cyklu,
 rezerwa i minimalny interwał. Po zatwierdzeniu formularza integracja pokazuje, jak często
 będzie odczytywać dane przy nowych ustawieniach.
+
+## Odświeżanie na żądanie
+
+`homeassistant.update_entity` na sensorach tej integracji **nie wywołuje API**, więc
+automatyzacje „odśwież co X minut” znane z wbudowanej integracji nie zużywają kredytów.
+Odczyt poza harmonogramem: akcja `solaredge_v2.refresh`.
 
 ## Akcje
 

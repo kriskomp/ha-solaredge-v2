@@ -11,6 +11,7 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.update_coordinator import UpdateFailed
 import voluptuous as vol
 
+from .callback_view import SolarEdgeCallbackView
 from .const import (
     ATTR_CONFIG_ENTRY_ID,
     ATTR_USED,
@@ -29,7 +30,8 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Register the actions."""
+    """Register the actions and the consent callback view."""
+    hass.http.register_view(SolarEdgeCallbackView())
 
     def _coordinator(call: ServiceCall) -> SolarEdgeCoordinator:
         entry_id = call.data.get(ATTR_CONFIG_ENTRY_ID)

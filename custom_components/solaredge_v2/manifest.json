@@ -1,14 +1,20 @@
 {
   "domain": "solaredge_v2",
   "name": "SolarEdge Monitoring API v2",
-  "codeowners": ["@kriskomp"],
+  "codeowners": [
+    "@kriskomp"
+  ],
   "config_flow": true,
-  "dependencies": [],
+  "dependencies": [
+    "http"
+  ],
   "documentation": "https://github.com/kriskomp/ha-solaredge-v2",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/kriskomp/ha-solaredge-v2/issues",
-  "loggers": ["custom_components.solaredge_v2"],
+  "loggers": [
+    "custom_components.solaredge_v2"
+  ],
   "requirements": [],
-  "version": "0.2.1"
+  "version": "2026.10.18.1"
 }

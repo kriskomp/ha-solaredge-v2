@@ -17,3 +17,12 @@
 - Uszkodzony albo nieczytelny plik `.storage` nie blokuje startu integracji: każda część cache
   (token, licznik, odczyty) jest wczytywana osobno, a błędna zostaje pominięta.
 - Błąd zapisu `.storage` nie przerywa odczytów, tylko trafia do logu.
+
+## 0.3.0 – 18.10.2026
+
+- Home Assistant sam odbiera przekierowanie z SolarEdge pod adresem
+  `https://<adres-HA>/api/solaredge_v2/callback`, więc nie trzeba niczego przeklejać.
+  Kreator podpowiada adres zewnętrzny HA. `http://localhost/callback` z wklejaniem zostaje jako
+  wariant awaryjny. Dotyczy także ponownej autoryzacji.
+- `homeassistant.update_entity` nie wywołuje już API (wcześniej każde wywołanie kosztowało
+  kredyty). Odczyt na żądanie: `solaredge_v2.refresh`.

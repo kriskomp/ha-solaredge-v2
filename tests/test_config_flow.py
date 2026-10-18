@@ -8,8 +8,10 @@ from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import entity_registry as er
+from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
+from pytest_homeassistant_custom_component.typing import ClientSessionGenerator
 
 from custom_components.solaredge_v2.const import (
     CONF_INITIAL,
@@ -105,3 +107,50 @@ async def test_flow_offers_to_take_over_builtin_sensors(
         result = await hass.config_entries.flow.async_configure(flow_id, {"migrate": True})
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_MIGRATE_FROM] == core.entry_id
+
+
+async def test_external_flow_catches_the_redirect(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    hass_client_no_auth: ClientSessionGenerator,
+) -> None:
+    assert await async_setup_component(hass, DOMAIN, {})
+    aioclient_mock.post(
+        TOKEN_URL, json={"access_token": "at", "refresh_token": "rt", "expires_in": 7200}
+    )
+    aioclient_mock.get(SITE_URL, json=load("site"))
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            "client_id": "cid",
+            "client_secret": "secret",
+            "redirect_uri": "https://ha.example.com/api/solaredge_v2/callback",
+        },
+    )
+    assert result["type"] is FlowResultType.EXTERNAL_STEP
+    assert "redirect_uri=https%3A%2F%2Fha.example.com" in result["url"]
+
+    client = await hass_client_no_auth()
+    resp = await client.get("/api/solaredge_v2/callback?code=CODE&site_id=1234567")
+    assert resp.status == 200
+    assert "Gotowe" in await resp.text()
+
+    result = await hass.config_entries.flow.async_configure(result["flow_id"])
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"]["redirect_uri"] == "https://ha.example.com/api/solaredge_v2/callback"
+    _, _, body, _ = aioclient_mock.mock_calls[0]
+    assert body["code"] == "CODE"
+    assert body["redirect_uri"] == "https://ha.example.com/api/solaredge_v2/callback"
+
+
+async def test_callback_without_waiting_flow(
+    hass: HomeAssistant, hass_client_no_auth: ClientSessionGenerator
+) -> None:
+    assert await async_setup_component(hass, DOMAIN, {})
+    client = await hass_client_no_auth()
+    resp = await client.get("/api/solaredge_v2/callback?code=CODE&site_id=1")
+    assert resp.status == 200
+    assert "Brak oczekującej konfiguracji" in await resp.text()

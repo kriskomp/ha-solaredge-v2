@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "SolarEdge application credentials",
-        "description": "Create a **Site Access** application in the [SolarEdge developer console]({console}) with the scopes SITE_DATA and DEVICE_DATA. Register the redirect URL `http://localhost/callback` (it does not need to exist) and enter the Client ID and Client Secret here.",
+        "description": "Create a **Site Access** application in the [SolarEdge developer console]({console}) with the scopes SITE_DATA and DEVICE_DATA and enter the Client ID and Client Secret here.\n\n**Redirect URL** - add exactly the same address under *Allowed Redirect URL(s)* of the application:\n- `{callback}` - Home Assistant catches the redirect itself (needs an HTTPS address of this Home Assistant that your browser can open, e.g. your external URL), or\n- `http://localhost/callback` - you paste the address from the browser by hand.",
         "data": {
           "client_id": "Client ID",
           "client_secret": "Client Secret",
@@ -31,6 +31,10 @@
         "data": {
           "migrate": "Take over these sensors and their history"
         }
+      },
+      "external": {
+        "title": "Approve access at SolarEdge",
+        "description": "Sign in with your mySolarEdge account in the window that opens and click **Approve**. Home Assistant receives the answer by itself; then come back here."
       }
     },
     "error": {

@@ -53,8 +53,11 @@ Na <https://developer.solaredge.com> (logowanie kontem mySolarEdge):
 
 - **Create Application**, usługa **Monitoring API**, typ dostępu **Site Access**;
 - zakresy **SITE_DATA** i **DEVICE_DATA**;
-- *Allowed Redirect URL*: `http://localhost/callback`. Ten adres nie musi istnieć. Konsola
-  przyjmuje `http://` tylko dla `localhost`;
+- *Allowed Redirect URL(s)*, jeden albo oba adresy:
+  - **`https://<adres-twojego-HA>/api/solaredge_v2/callback`**: Home Assistant sam odbierze
+    przekierowanie (zalecane). Potrzebny jest adres HTTPS Home Assistanta, który otwiera Twoja
+    przeglądarka, np. adres zewnętrzny. Konsola przyjmuje tylko HTTPS z zarejestrowaną domeną;
+  - `http://localhost/callback`: wariant awaryjny, adres z przeglądarki wklejasz ręcznie;
 - zapisz **Client ID** i **Client Secret**. Secret pokazywany jest tylko raz.
 
 Na stronie *Dashboard* sprawdź datę **Subscription start date**. Dzień tej daty to dzień
@@ -64,14 +67,19 @@ miesiąca, w którym resetują się kredyty (opcja *billing day*).
 
 *Ustawienia → Urządzenia i usługi → Dodaj integrację → SolarEdge Monitoring API v2*:
 
-1. Wpisz Client ID, Client Secret i Redirect URL.
-2. Kliknij link do strony zgody, zaloguj się i kliknij **Approve**.
-3. Przeglądarka przejdzie na `http://localhost/callback?code=...&site_id=...` i pokaże błąd
-   połączenia. Tak ma być: skopiuj **cały adres z paska** i wklej go w formularzu. Kod jest
-   ważny krótko.
+1. Wpisz Client ID i Client Secret. Pole Redirect URL jest wypełnione adresem zewnętrznym HA
+   (*Ustawienia → System → Sieć*) z końcówką `/api/solaredge_v2/callback`. Sprawdź, czy taki
+   sam adres jest w aplikacji SolarEdge.
+2. **Adres HTTPS HA:** otworzy się okno SolarEdge. Zaloguj się, kliknij **Approve**, a Home
+   Assistant sam odbierze odpowiedź i dokończy konfigurację. Okno możesz zamknąć.
+3. **`http://localhost/callback`:** po **Approve** przeglądarka pokaże błąd połączenia. Skopiuj
+   **cały adres z paska** i wklej go w formularzu. Kod jest ważny krótko.
 
-Dlaczego tak, a nie przez wbudowany mechanizm OAuth w HA? SolarEdge nie odsyła parametru
-`state`, którego wymaga wbudowany przepływ OAuth w Home Assistant. Sprawdzone 16.10.2026.
+Dlaczego integracja ma własny adres zwrotny zamiast wbudowanego mechanizmu OAuth w HA?
+SolarEdge nie odsyła parametru `state`, którego wymaga wbudowany przepływ OAuth (i
+my.home-assistant.io). Sprawdzone 16.10.2026. Integracja przekazuje więc kod do kreatora,
+który właśnie czeka na zgodę. Przekierowanie wykonuje przeglądarka, a nie serwery SolarEdge,
+dlatego adres musi być osiągalny tylko z Twojej przeglądarki.
 
 ### Przejście z wbudowanej integracji `solaredge`
 
@@ -89,6 +97,12 @@ Jeśli *Naprawy* zaproponują usunięcie statystyk starych sensorów, nie zgadza
 *Konfiguruj* na integracji: tryb pracy, grupy sensorów, limit miesięczny, dzień resetu cyklu,
 rezerwa i minimalny interwał. Po zatwierdzeniu formularza integracja pokazuje, jak często
 będzie odczytywać dane przy nowych ustawieniach.
+
+## Odświeżanie na żądanie
+
+`homeassistant.update_entity` na sensorach tej integracji **nie wywołuje API**, więc
+automatyzacje „odśwież co X minut” znane z wbudowanej integracji nie zużywają kredytów.
+Odczyt poza harmonogramem: akcja `solaredge_v2.refresh`.
 
 ## Akcje
 

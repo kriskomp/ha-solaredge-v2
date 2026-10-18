@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Dane aplikacji SolarEdge",
-        "description": "Utwórz aplikację **Site Access** w [konsoli deweloperskiej SolarEdge]({console}) z zakresami SITE_DATA i DEVICE_DATA. Jako Redirect URL zarejestruj `http://localhost/callback` (ten adres nie musi istnieć) i wpisz tutaj Client ID oraz Client Secret.",
+        "description": "Utwórz aplikację **Site Access** w [konsoli deweloperskiej SolarEdge]({console}) z zakresami SITE_DATA i DEVICE_DATA i wpisz tutaj Client ID oraz Client Secret.\n\n**Redirect URL** - ten sam adres dodaj w aplikacji w *Allowed Redirect URL(s)*:\n- `{callback}` - Home Assistant sam odbierze przekierowanie (potrzebny adres HTTPS tego Home Assistanta, który otwiera Twoja przeglądarka, np. adres zewnętrzny), albo\n- `http://localhost/callback` - adres z przeglądarki wklejasz ręcznie.",
         "data": {
           "client_id": "Client ID",
           "client_secret": "Client Secret",
@@ -31,6 +31,10 @@
         "data": {
           "migrate": "Przejmij te sensory razem z historią"
         }
+      },
+      "external": {
+        "title": "Zatwierdź dostęp w SolarEdge",
+        "description": "W otwartym oknie zaloguj się kontem mySolarEdge i kliknij **Approve**. Home Assistant sam odbierze odpowiedź; potem wróć tutaj."
       }
     },
     "error": {

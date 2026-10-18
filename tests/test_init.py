@@ -8,6 +8,7 @@ from typing import Any
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
@@ -217,3 +218,30 @@ async def test_request_is_counted_before_the_answer(
     assert not coordinator.last_update_success
     saved = hass_storage[f"{DOMAIN}.{entry.entry_id}"]["data"]
     assert saved["ledger"]["used"] == 2
+
+
+async def test_update_entity_does_not_spend_credits(
+    hass: HomeAssistant,
+    hass_storage: dict[str, Any],
+    aioclient_mock: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    freezer.move_to(NOW)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    hass_storage[f"{DOMAIN}.{entry.entry_id}"] = {
+        "version": 1,
+        "minor_version": 1,
+        "key": f"{DOMAIN}.{entry.entry_id}",
+        "data": _cached_state(NOW - timedelta(minutes=5)),
+    }
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    assert await async_setup_component(hass, "homeassistant", {})
+    await hass.async_block_till_done()
+    power = er.async_get(hass).async_get_entity_id("sensor", DOMAIN, "1234567_current_power")
+    await hass.services.async_call(
+        "homeassistant", "update_entity", {"entity_id": power}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert aioclient_mock.call_count == 0
+    assert entry.runtime_data.ledger.used == 42

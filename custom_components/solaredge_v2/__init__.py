@@ -21,6 +21,7 @@ from .const import (
     SERVICE_SET_CREDITS,
     STORAGE_VERSION,
 )
+from .callback_view import SolarEdgeCallbackView
 from .coordinator import SolarEdgeConfigEntry, SolarEdgeCoordinator
 from .migrate import async_migrate_from_core
 
@@ -29,7 +30,8 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Register the actions."""
+    """Register the actions and the consent callback view."""
+    hass.http.register_view(SolarEdgeCallbackView())
 
     def _coordinator(call: ServiceCall) -> SolarEdgeCoordinator:
         entry_id = call.data.get(ATTR_CONFIG_ENTRY_ID)

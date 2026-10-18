@@ -24,5 +24,8 @@
   `https://<adres-HA>/api/solaredge_v2/callback`, więc nie trzeba niczego przeklejać.
   Kreator podpowiada adres zewnętrzny HA. `http://localhost/callback` z wklejaniem zostaje jako
   wariant awaryjny. Dotyczy także ponownej autoryzacji.
+- **Zmień konfigurację** (Reconfigure): zmiana Client ID, Client Secret i Redirect URL bez
+  usuwania integracji. Przy ponownej autoryzacji kreator pyta o Redirect URL i podpowiada
+  adres HA zamiast zapisanego `localhost`.
 - `homeassistant.update_entity` nie wywołuje już API (wcześniej każde wywołanie kosztowało
   kredyty). Odczyt na żądanie: `solaredge_v2.refresh`.

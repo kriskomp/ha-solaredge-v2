@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 
 from homeassistant.config_entries import (
     SOURCE_REAUTH,
+    SOURCE_RECONFIGURE,
     ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
@@ -155,7 +156,7 @@ class SolarEdgeConfigFlow(ConfigFlow, domain=DOMAIN):
         """HA's external HTTPS address + callback path, else the localhost fallback."""
         try:
             base = get_url(
-                self.hass, allow_internal=False, allow_cloud=False, require_ssl=True
+                self.hass, allow_internal=False, require_ssl=True
             )
         except NoURLAvailableError:
             return DEFAULT_REDIRECT_URI
@@ -165,11 +166,19 @@ class SolarEdgeConfigFlow(ConfigFlow, domain=DOMAIN):
         """Open the consent page; HA catches the redirect unless it is localhost."""
         if is_localhost(self._redirect_uri):
             return await (
-                self.async_step_reauth_confirm()
-                if self.source == SOURCE_REAUTH
-                else self.async_step_authorize()
+                self.async_step_reauth_confirm() if self._updating else self.async_step_authorize()
             )
         return await self.async_step_external()
+
+    @property
+    def _updating(self) -> bool:
+        """Re-authentication or reconfiguration of an existing entry."""
+        return self.source in (SOURCE_REAUTH, SOURCE_RECONFIGURE)
+
+    def _existing_entry(self) -> ConfigEntry:
+        if self.source == SOURCE_RECONFIGURE:
+            return self._get_reconfigure_entry()
+        return self._get_reauth_entry()
 
     async def async_step_external(
         self, user_input: dict[str, Any] | None = None
@@ -188,13 +197,12 @@ class SolarEdgeConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Exchange the code the callback delivered."""
         errors: dict[str, str] = {}
-        if self.source == SOURCE_REAUTH:
-            entry = self._get_reauth_entry()
-            self._callback_input[CONF_SITE_ID_INPUT] = entry.data[CONF_SITE_ID]
+        if self._updating:
+            self._callback_input[CONF_SITE_ID_INPUT] = self._existing_entry().data[CONF_SITE_ID]
         result = await self._exchange(self._callback_input, errors)
         if result is None:
             # Fall back to pasting, with the reason shown.
-            step = "reauth_confirm" if self.source == SOURCE_REAUTH else "authorize"
+            step = "reauth_confirm" if self._updating else "authorize"
             return self.async_show_form(
                 step_id=step,
                 data_schema=_authorize_schema(self._need_site_id and step == "authorize"),
@@ -275,15 +283,18 @@ class SolarEdgeConfigFlow(ConfigFlow, domain=DOMAIN):
     async def _async_complete(
         self, result: tuple[TokenSet, str, dict[str, Any], int]
     ) -> ConfigFlowResult:
-        """Create the entry (or update it on re-authentication)."""
+        """Create the entry (or update it on re-authentication / reconfiguration)."""
         token, site_id, site, calls = result
-        if self.source == SOURCE_REAUTH:
-            entry = self._get_reauth_entry()
+        if self._updating:
+            entry = self._existing_entry()
             if site_id != str(entry.data[CONF_SITE_ID]):
                 return self.async_abort(reason="wrong_site")
             return self.async_update_reload_and_abort(
                 entry,
                 data_updates={
+                    CONF_CLIENT_ID: self._client_id,
+                    CONF_CLIENT_SECRET: self._client_secret,
+                    CONF_REDIRECT_URI: self._redirect_uri,
                     CONF_TOKEN: token.as_dict(),
                     CONF_GRANTED_AT: dt_util.utcnow().isoformat(),
                 },
@@ -324,19 +335,71 @@ class SolarEdgeConfigFlow(ConfigFlow, domain=DOMAIN):
             description_placeholders={"entities": "\n".join(f"- `{e}`" for e in entities)},
         )
 
+    def _redirect_default(self, stored: str | None) -> str:
+        """Prefer HA's own callback over a stored localhost address."""
+        suggested = self._suggested_redirect()
+        if not stored or (is_localhost(stored) and not is_localhost(suggested)):
+            return suggested
+        return stored
+
     async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> ConfigFlowResult:
         """The refresh token was rejected: approve access again."""
         self._client_id = entry_data[CONF_CLIENT_ID]
         self._client_secret = entry_data[CONF_CLIENT_SECRET]
-        self._redirect_uri = entry_data.get(CONF_REDIRECT_URI, DEFAULT_REDIRECT_URI)
-        return await self._async_start_consent()
+        self._redirect_uri = self._redirect_default(entry_data.get(CONF_REDIRECT_URI))
+        return await self.async_step_reauth_redirect()
+
+    async def async_step_reauth_redirect(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Confirm the Redirect URL (it must be registered in the SolarEdge app)."""
+        if user_input is not None:
+            self._redirect_uri = user_input[CONF_REDIRECT_URI].strip()
+            return await self._async_start_consent()
+        return self.async_show_form(
+            step_id="reauth_redirect",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_REDIRECT_URI, default=self._redirect_uri): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.URL)
+                    )
+                }
+            ),
+            description_placeholders={"callback": self._suggested_redirect()},
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Change Client ID / Secret / Redirect URL, then approve access again."""
+        entry = self._get_reconfigure_entry()
+        if user_input is not None:
+            self._client_id = user_input[CONF_CLIENT_ID].strip()
+            self._client_secret = user_input[CONF_CLIENT_SECRET].strip()
+            self._redirect_uri = user_input[CONF_REDIRECT_URI].strip()
+            return await self._async_start_consent()
+        schema = self.add_suggested_values_to_schema(
+            _user_schema(self._redirect_default(entry.data.get(CONF_REDIRECT_URI))),
+            {
+                CONF_CLIENT_ID: entry.data[CONF_CLIENT_ID],
+                CONF_CLIENT_SECRET: entry.data[CONF_CLIENT_SECRET],
+            },
+        )
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=schema,
+            description_placeholders={
+                "console": "https://developer.solaredge.com",
+                "callback": self._suggested_redirect(),
+            },
+        )
 
     async def async_step_reauth_confirm(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Paste step for a localhost redirect, then update the existing entry."""
         errors: dict[str, str] = {}
-        entry = self._get_reauth_entry()
+        entry = self._existing_entry()
         if user_input is not None:
             user_input = {**user_input, CONF_SITE_ID_INPUT: entry.data[CONF_SITE_ID]}
             result = await self._exchange(user_input, errors)

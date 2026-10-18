@@ -35,6 +35,22 @@
       "external": {
         "title": "Zatwierdź dostęp w SolarEdge",
         "description": "W otwartym oknie zaloguj się kontem mySolarEdge i kliknij **Approve**. Home Assistant sam odbierze odpowiedź; potem wróć tutaj."
+      },
+      "reauth_redirect": {
+        "title": "Ponowna autoryzacja SolarEdge",
+        "description": "SolarEdge potrzebuje ponownej zgody (token wygasł po 30 dniach nieużywania albo skończyła się 24-miesięczna zgoda).\n\nPotwierdź **Redirect URL**. Musi być wpisany w *Allowed Redirect URL(s)* Twojej aplikacji SolarEdge. Podpowiedź: `{callback}` (Home Assistant sam odbierze odpowiedź); `http://localhost/callback` oznacza ręczne wklejanie adresu.",
+        "data": {
+          "redirect_uri": "Redirect URL"
+        }
+      },
+      "reconfigure": {
+        "title": "Zmiana ustawień aplikacji SolarEdge",
+        "description": "Zmień Client ID, Client Secret albo **Redirect URL** (musi być wpisany w *Allowed Redirect URL(s)* w [konsoli deweloperskiej SolarEdge]({console})). Podpowiedź: `{callback}`.\n\nPo zapisaniu ponownie zatwierdzasz dostęp; historia, sensory i licznik kredytów zostają.",
+        "data": {
+          "client_id": "Client ID",
+          "client_secret": "Client Secret",
+          "redirect_uri": "Redirect URL"
+        }
       }
     },
     "error": {
@@ -47,7 +63,8 @@
     "abort": {
       "already_configured": "Ta instalacja jest już skonfigurowana.",
       "reauth_successful": "Dostęp odnowiony.",
-      "wrong_site": "Zatwierdzono inną instalację niż skonfigurowana."
+      "wrong_site": "Zatwierdzono inną instalację niż skonfigurowana.",
+      "reconfigure_successful": "Ustawienia zmienione, dostęp odnowiony."
     }
   },
   "options": {

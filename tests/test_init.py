@@ -167,3 +167,53 @@ async def test_takes_over_builtin_sensors_with_their_entity_ids(
     assert hass.config_entries.async_get_entry(core.entry_id).disabled_by is not None
     assert "migrate_from" not in entry.data
     assert aioclient_mock.call_count == 0
+
+
+async def test_broken_cache_does_not_block_setup(
+    hass: HomeAssistant,
+    hass_storage: dict[str, Any],
+    aioclient_mock: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    freezer.move_to(NOW)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    hass_storage[f"{DOMAIN}.{entry.entry_id}"] = {
+        "version": 1,
+        "minor_version": 1,
+        "key": f"{DOMAIN}.{entry.entry_id}",
+        "data": {
+            "token": "garbage",
+            "ledger": {"cycle_start": "not-a-date", "used": 5},
+            "state": {"today": {"day": "nope"}},
+        },
+    }
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    coordinator = entry.runtime_data
+    assert coordinator.ledger.used == 0
+    assert coordinator.state.today is None
+    assert coordinator._token.refresh_token == "rt"  # from the entry, not the broken cache
+    assert aioclient_mock.call_count == 0
+
+
+async def test_request_is_counted_before_the_answer(
+    hass: HomeAssistant,
+    hass_storage: dict[str, Any],
+    aioclient_mock: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    freezer.move_to(NOW)
+    aioclient_mock.get(f"{API}/inverters/telemetry", exc=TimeoutError())
+    entry = _entry(initial={"site": load("site"), "calls": 1})
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    coordinator = entry.runtime_data
+    await coordinator.async_poll_now()
+    await hass.async_block_till_done()
+    # The timed-out call may have reached SolarEdge, so it costs a credit too.
+    assert coordinator.ledger.used == 2
+    assert not coordinator.last_update_success
+    saved = hass_storage[f"{DOMAIN}.{entry.entry_id}"]["data"]
+    assert saved["ledger"]["used"] == 2

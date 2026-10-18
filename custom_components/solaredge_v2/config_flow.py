@@ -163,14 +163,14 @@ class SolarEdgeConfigFlow(ConfigFlow, domain=DOMAIN):
 
         calls = 0
 
-        def count(_path: str, _status: int) -> None:
+        def count(_path: str) -> None:
             nonlocal calls
             calls += 1
 
         async def token_getter() -> str:
             return token.access_token
 
-        client = SolarEdgeClient(session, token_getter, on_call=count)
+        client = SolarEdgeClient(session, token_getter, on_send=count)
         try:
             site = await client.site(site_id)
         except SolarEdgeForbiddenError:

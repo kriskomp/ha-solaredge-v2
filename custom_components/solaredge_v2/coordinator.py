@@ -174,7 +174,7 @@ class SolarEdgeCoordinator(DataUpdateCoordinator[SiteState]):
         self._token: TokenSet = TokenSet.from_dict(entry.data[CONF_TOKEN])
         self._token_lock = asyncio.Lock()
         self.client = SolarEdgeClient(
-            async_get_clientsession(hass), self._access_token, on_call=self._count_call
+            async_get_clientsession(hass), self._access_token, on_send=self._count_call
         )
         self.state = SiteState()
         self.ledger = Ledger(cycle_start=date.today())
@@ -187,15 +187,27 @@ class SolarEdgeCoordinator(DataUpdateCoordinator[SiteState]):
 
     async def async_initialize(self) -> None:
         """Restore the cache (no API call) and start the schedule."""
-        raw = await self._store.async_load() or {}
+        raw = await self._async_load_cache()
         stored_token = raw.get("token")
-        if stored_token:
-            candidate = TokenSet.from_dict(stored_token)
-            if candidate.issued_at > self._token.issued_at:
-                self._token = candidate
+        if isinstance(stored_token, dict):
+            try:
+                candidate = TokenSet.from_dict(stored_token)
+            except (KeyError, TypeError, ValueError) as err:
+                LOGGER.warning("Ignoring the cached token (unreadable: %s)", err)
+            else:
+                if candidate.issued_at > self._token.issued_at:
+                    self._token = candidate
         today = self.today()
-        self.ledger = Ledger.from_dict(raw.get("ledger"), today, self.options.billing_day)
-        self.state = SiteState.from_dict(raw.get("state"))
+        try:
+            self.ledger = Ledger.from_dict(raw.get("ledger"), today, self.options.billing_day)
+        except (KeyError, TypeError, ValueError) as err:
+            LOGGER.warning("Credit counter in .storage unreadable (%s); starting from 0", err)
+            self.ledger = Ledger.from_dict(None, today, self.options.billing_day)
+        try:
+            self.state = SiteState.from_dict(raw.get("state"))
+        except (KeyError, TypeError, ValueError, AttributeError) as err:
+            LOGGER.warning("Cached readings in .storage unreadable (%s); starting empty", err)
+            self.state = SiteState()
 
         initial = self.config_entry.data.get(CONF_INITIAL)
         if initial:
@@ -228,15 +240,33 @@ class SolarEdgeCoordinator(DataUpdateCoordinator[SiteState]):
             self._unsub_midnight()
             self._unsub_midnight = None
 
+    async def _async_load_cache(self) -> dict[str, Any]:
+        """Read .storage; a missing or broken file means "start without a cache"."""
+        try:
+            raw = await self._store.async_load()
+        except Exception as err:  # never block setup on a bad cache
+            LOGGER.warning("Could not read the SolarEdge cache, starting without it: %s", err)
+            return {}
+        return raw if isinstance(raw, dict) else {}
+
+    def _snapshot(self) -> dict[str, Any]:
+        return {
+            "token": self._token.as_dict(),
+            "ledger": self.ledger.as_dict(),
+            "state": self.state.as_dict(),
+        }
+
     async def async_save(self) -> None:
         """Write token, ledger and state to .storage immediately."""
-        await self._store.async_save(
-            {
-                "token": self._token.as_dict(),
-                "ledger": self.ledger.as_dict(),
-                "state": self.state.as_dict(),
-            }
-        )
+        try:
+            await self._store.async_save(self._snapshot())
+        except Exception as err:  # a failed write must not break polling
+            LOGGER.warning("Could not write the SolarEdge cache: %s", err)
+
+    @callback
+    def save_soon(self) -> None:
+        """Save within a second (or when Home Assistant stops) without waiting."""
+        self._store.async_delay_save(self._snapshot, 1)
 
     # ------------------------------------------------------------------ site
 
@@ -316,9 +346,10 @@ class SolarEdgeCoordinator(DataUpdateCoordinator[SiteState]):
     # ------------------------------------------------------------------ credits
 
     @callback
-    def _count_call(self, path: str, status: int) -> None:
+    def _count_call(self, path: str) -> None:
         self.ledger.used += 1
-        LOGGER.debug("API call %s -> %s (credits used: %s)", path, status, self.ledger.used)
+        self.save_soon()  # a crash mid-poll must not lose the count
+        LOGGER.debug("API call %s (credits used: %s)", path, self.ledger.used)
 
     @property
     def credits_remaining(self) -> int:

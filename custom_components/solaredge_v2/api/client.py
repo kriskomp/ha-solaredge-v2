@@ -34,7 +34,7 @@ BASE_URL = "https://monitoringapi.solaredge.com/v2"
 DEFAULT_TIMEOUT = 30.0
 
 TokenGetter = Callable[[], Awaitable[str]]
-CallListener = Callable[[str, int], None]
+SendListener = Callable[[str], None]
 
 
 def instant(value: datetime) -> str:
@@ -57,14 +57,14 @@ class SolarEdgeClient:
         session: ClientSession,
         token_getter: TokenGetter,
         *,
-        on_call: CallListener | None = None,
+        on_send: SendListener | None = None,
         base_url: str = BASE_URL,
         timeout: float = DEFAULT_TIMEOUT,
     ) -> None:
         """Use the caller's session; the client never creates or closes one."""
         self._session = session
         self._token_getter = token_getter
-        self._on_call = on_call
+        self._on_send = on_send
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
         self.remaining_minute: int | None = None
@@ -73,6 +73,10 @@ class SolarEdgeClient:
         """GET a path and return the decoded JSON body."""
         token = await self._token_getter()
         headers = {"Accept": "application/json", "Authorization": f"Bearer {token}"}
+        if self._on_send is not None:
+            # Counted before sending: a request that times out may still have
+            # reached SolarEdge and cost a credit.
+            self._on_send(path)
         try:
             async with asyncio.timeout(self._timeout):
                 response = await self._session.get(
@@ -82,8 +86,6 @@ class SolarEdgeClient:
                     remaining = response.headers.get("x-ratelimit-remaining-minute")
                     if remaining is not None and remaining.strip().isdigit():
                         self.remaining_minute = int(remaining)
-                    if self._on_call is not None:
-                        self._on_call(path, response.status)
                     if response.status >= 400:
                         raise await _error_for(response)
                     return await response.json(content_type=None)

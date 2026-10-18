@@ -9,3 +9,11 @@
 
 - Przejęcie sensorów wbudowanej integracji `solaredge` (ten sam `entity_id` i historia),
   proponowane w kreatorze; stara integracja zostaje wyłączona.
+
+## 0.2.1 – 18.10.2026
+
+- Zapytanie do API liczone jest przed wysłaniem i zapisywane w ciągu sekundy, więc zapytania
+  przerwane przez timeout też trafiają do licznika, a awaria HA w trakcie odczytu nie gubi kredytów.
+- Uszkodzony albo nieczytelny plik `.storage` nie blokuje startu integracji: każda część cache
+  (token, licznik, odczyty) jest wczytywana osobno, a błędna zostaje pominięta.
+- Błąd zapisu `.storage` nie przerywa odczytów, tylko trafia do logu.

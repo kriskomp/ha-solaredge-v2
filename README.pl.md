@@ -100,6 +100,12 @@ Na <https://developer.solaredge.com> (logowanie kontem mySolarEdge):
 Na stronie *Dashboard* sprawdź **Subscription start date**. Dzień tej daty to dzień miesiąca,
 w którym resetują się kredyty. API go nie podaje, więc kreator o niego zapyta (krok 3).
 
+Cykl trwa od tego dnia do tego samego dnia następnego miesiąca, więc jego długość wynika
+z kalendarza (od 28 do 31 dni). Jeśli w krótszym miesiącu nie ma takiego dnia (29, 30 lub 31),
+cykl zaczyna się ostatniego dnia tego miesiąca. Tryb *stały* liczy interwał dla miesiąca
+31-dniowego, więc mieści się w każdym miesiącu; tryb *adaptacyjny* korzysta z faktycznej liczby
+dni pozostałych do końca cyklu.
+
 ### 3. Dodanie integracji
 
 *Ustawienia → Urządzenia i usługi → Dodaj integrację → SolarEdge Monitoring API v2*:
@@ -112,7 +118,8 @@ w którym resetują się kredyty. API go nie podaje, więc kreator o niego zapyt
    **cały adres z paska** (`http://localhost/callback?code=...&site_id=...`) i wklej go w
    kreatorze. Kod jest ważny krótko.
 4. Wpisz **dzień odnowienia kredytów**: dzień miesiąca z *Subscription start date* na stronie
-   *Dashboard* portalu deweloperskiego (np. 16 dla 16.10.2026).
+   *Dashboard* portalu deweloperskiego (np. 16 dla 16.10.2026). Zwykle jest to dzień założenia
+   konta deweloperskiego.
 
 Jeśli w wariancie zalecanym coś pójdzie nie tak (np. adres nie zgadza się z tym w aplikacji
 SolarEdge), kreator pokaże przyczynę i pozwoli wkleić adres ręcznie.

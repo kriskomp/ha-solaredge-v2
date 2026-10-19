@@ -18,6 +18,7 @@ angielsku, niżej po polsku.
   the developer portal Dashboard). The API does not report it, and the day the integration was
   added was only a guess. Existing installations get a one-time **Repairs** notification with a
   field to confirm the day; saving the options also confirms it.
+- README: how the cycle follows months of 28 to 31 days; tests for leap years and cycle lengths.
 
 ### Polski
 
@@ -29,6 +30,8 @@ angielsku, niżej po polsku.
   Dashboard portalu deweloperskiego). API go nie podaje, a dzień dodania integracji był tylko
   domysłem. Istniejące instalacje dostaną jednorazowe powiadomienie w **Naprawach** z polem do
   potwierdzenia dnia; zapisanie opcji też je potwierdza.
+- README: jak cykl dopasowuje się do miesięcy od 28 do 31 dni; testy lat przestępnych i długości
+  cyklu.
 
 ## 2026.10.18.1
 

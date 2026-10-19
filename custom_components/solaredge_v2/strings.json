@@ -27,7 +27,7 @@
       },
       "billing": {
         "title": "Credit cycle start day",
-        "description": "SolarEdge does not report the billing cycle through the API, so the integration needs it to count credits correctly.\n\nOpen the [developer portal Dashboard]({dashboard}) and look at **Subscription start date**: enter its day of the month (for example 16 for 16.10.2026). The credits reset on that day every month.",
+        "description": "SolarEdge does not report the billing cycle through the API, so the integration needs it to count credits correctly.\n\nOpen the [developer portal Dashboard]({dashboard}) and look at **Subscription start date**: enter its day of the month (for example 16 for 16.10.2026). It is usually the day you created your developer account. The credits reset on that day every month.",
         "data": {
           "billing_day": "Day of month the credits reset"
         }
@@ -229,7 +229,7 @@
         "step": {
           "init": {
             "title": "Credit cycle start day",
-            "description": "The integration assumed the credits reset on day **{day}** (the day it was added). SolarEdge does not report the real day through the API.\n\nOpen the [developer portal Dashboard]({dashboard}), check **Subscription start date** and enter its day of the month.",
+            "description": "The integration assumed the credits reset on day **{day}** (the day it was added). SolarEdge does not report the real day through the API.\n\nOpen the [developer portal Dashboard]({dashboard}), check **Subscription start date** and enter its day of the month. It is usually the day you created your developer account.",
             "data": {
               "billing_day": "Day of month the credits reset"
             }

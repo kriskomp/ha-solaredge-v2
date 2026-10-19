@@ -27,7 +27,7 @@
       },
       "billing": {
         "title": "Dzień rozpoczęcia cyklu kredytów",
-        "description": "SolarEdge nie podaje cyklu rozliczeniowego przez API, a integracja potrzebuje go, żeby poprawnie liczyć kredyty.\n\nOtwórz [Dashboard w portalu deweloperskim]({dashboard}) i sprawdź **Subscription start date**: wpisz dzień miesiąca z tej daty (np. 16 dla 16.10.2026). Kredyty odnawiają się w tym dniu każdego miesiąca.",
+        "description": "SolarEdge nie podaje cyklu rozliczeniowego przez API, a integracja potrzebuje go, żeby poprawnie liczyć kredyty.\n\nOtwórz [Dashboard w portalu deweloperskim]({dashboard}) i sprawdź **Subscription start date**: wpisz dzień miesiąca z tej daty (np. 16 dla 16.10.2026). Zwykle jest to dzień założenia konta deweloperskiego. Kredyty odnawiają się w tym dniu każdego miesiąca.",
         "data": {
           "billing_day": "Dzień miesiąca, w którym odnawiają się kredyty"
         }
@@ -229,7 +229,7 @@
         "step": {
           "init": {
             "title": "Dzień rozpoczęcia cyklu kredytów",
-            "description": "Integracja przyjęła, że kredyty odnawiają się **{day}.** dnia miesiąca (w dniu jej dodania). SolarEdge nie podaje prawdziwego dnia przez API.\n\nOtwórz [Dashboard w portalu deweloperskim]({dashboard}), sprawdź **Subscription start date** i wpisz dzień miesiąca z tej daty.",
+            "description": "Integracja przyjęła, że kredyty odnawiają się **{day}.** dnia miesiąca (w dniu jej dodania). SolarEdge nie podaje prawdziwego dnia przez API.\n\nOtwórz [Dashboard w portalu deweloperskim]({dashboard}), sprawdź **Subscription start date** i wpisz dzień miesiąca z tej daty. Zwykle jest to dzień założenia konta deweloperskiego.",
             "data": {
               "billing_day": "Dzień miesiąca, w którym odnawiają się kredyty"
             }

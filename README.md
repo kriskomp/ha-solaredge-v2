@@ -104,6 +104,11 @@ At <https://developer.solaredge.com> (sign in with your mySolarEdge account):
 On the *Dashboard* page, check the **Subscription start date**. Its day of the month is the day
 the credits reset. The API does not report it, so the setup asks for it (step 3).
 
+The cycle runs from that day to the same day of the next month, so its length follows the
+calendar (28 to 31 days). If the day does not exist in a shorter month (29, 30 or 31), the cycle
+starts on that month's last day. The *fixed* mode sizes the interval for a 31-day month, so it
+fits every month; the *adaptive* mode uses the actual number of days left in the cycle.
+
 ### 3. Adding the integration
 
 *Settings → Devices & services → Add integration → SolarEdge Monitoring API v2*:
@@ -117,7 +122,8 @@ the credits reset. The API does not report it, so the setup asks for it (step 3)
    **whole address from the address bar** (`http://localhost/callback?code=...&site_id=...`) and
    paste it into the setup dialog. The code is valid only for a short time.
 4. Enter the **day the credits reset**: the day of the month of the *Subscription start date*
-   from the developer portal *Dashboard* (for example 16 for 16.10.2026).
+   from the developer portal *Dashboard* (for example 16 for 16.10.2026). It is usually the day
+   you created your developer account.
 
 If something goes wrong in the recommended variant (for example the address does not match the
 one in the SolarEdge application), the setup shows the reason and lets you paste the address by

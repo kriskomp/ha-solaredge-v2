@@ -102,7 +102,7 @@ At <https://developer.solaredge.com> (sign in with your mySolarEdge account):
    .env*).
 
 On the *Dashboard* page, check the **Subscription start date**. Its day of the month is the day
-the credits reset (the *billing day* option).
+the credits reset. The API does not report it, so the setup asks for it (step 3).
 
 ### 3. Adding the integration
 
@@ -116,6 +116,8 @@ the credits reset (the *billing day* option).
 3. **Fallback (localhost):** after **Approve** the browser shows a connection error. Copy the
    **whole address from the address bar** (`http://localhost/callback?code=...&site_id=...`) and
    paste it into the setup dialog. The code is valid only for a short time.
+4. Enter the **day the credits reset**: the day of the month of the *Subscription start date*
+   from the developer portal *Dashboard* (for example 16 for 16.10.2026).
 
 If something goes wrong in the recommended variant (for example the address does not match the
 one in the SolarEdge application), the setup shows the reason and lets you paste the address by
@@ -151,6 +153,9 @@ The taken-over entities keep **the same `entity_id`, name, area, unit and their 
 
 The built-in integration is **disabled**, not deleted. Delete it yourself once everything works.
 If *Repairs* offers to delete the statistics of the old sensors, do not.
+
+Installations added with version 2026.10.18.1 assumed the day they were added. They get a
+one-time notification in *Settings → Repairs* with a field to confirm the day.
 
 ### 4. Options
 

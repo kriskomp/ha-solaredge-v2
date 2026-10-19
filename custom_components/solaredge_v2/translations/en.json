@@ -25,6 +25,13 @@
           "redirect_url": "Address from the browser's address bar"
         }
       },
+      "billing": {
+        "title": "Credit cycle start day",
+        "description": "SolarEdge does not report the billing cycle through the API, so the integration needs it to count credits correctly.\n\nOpen the [developer portal Dashboard]({dashboard}) and look at **Subscription start date**: enter its day of the month (for example 16 for 16.10.2026). The credits reset on that day every month.",
+        "data": {
+          "billing_day": "Day of month the credits reset"
+        }
+      },
       "migrate": {
         "title": "Take over the built-in SolarEdge sensors",
         "description": "The built-in SolarEdge integration is set up for this site. This integration can take over its sensors with the **same entity IDs, names, areas and full history** (graphs, statistics, Energy dashboard):\n\n{entities}\n\nThe built-in integration will be **disabled** (not deleted) - its API v1 stops working in November anyway. Do not delete the old statistics if Repairs offers it.",
@@ -215,6 +222,23 @@
     "core_migrated": {
       "title": "SolarEdge sensors taken over",
       "description": "These sensors now belong to SolarEdge Monitoring API v2 and keep their history: {entities}.\n\nThe built-in SolarEdge integration was disabled. Once everything looks right you can delete it (Settings > Devices & services). If Repairs offers to delete statistics of the old sensors, do not."
+    },
+    "billing_day_unconfirmed": {
+      "title": "Confirm the SolarEdge credit cycle day",
+      "fix_flow": {
+        "step": {
+          "init": {
+            "title": "Credit cycle start day",
+            "description": "The integration assumed the credits reset on day **{day}** (the day it was added). SolarEdge does not report the real day through the API.\n\nOpen the [developer portal Dashboard]({dashboard}), check **Subscription start date** and enter its day of the month.",
+            "data": {
+              "billing_day": "Day of month the credits reset"
+            }
+          }
+        },
+        "abort": {
+          "entry_not_found": "The integration entry no longer exists."
+        }
+      }
     }
   },
   "services": {

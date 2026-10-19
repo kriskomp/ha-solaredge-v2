@@ -14,6 +14,10 @@ angielsku, niżej po polsku.
   (end of the newest 15-minute interval, or the poll time if that interval was still filling)
   instead of the interval's start. Attributes `interval_start` and `interval_end` show the
   interval itself.
+- **The setup asks for the day the credits reset** (the day of the *Subscription start date* on
+  the developer portal Dashboard). The API does not report it, and the day the integration was
+  added was only a guess. Existing installations get a one-time **Repairs** notification with a
+  field to confirm the day; saving the options also confirms it.
 
 ### Polski
 
@@ -21,6 +25,10 @@ angielsku, niżej po polsku.
   dane (koniec najnowszego 15-minutowego przedziału albo moment odczytu, jeśli przedział się
   jeszcze zapełniał), a nie początek przedziału. Atrybuty `interval_start` i `interval_end`
   pokazują sam przedział.
+- **Kreator pyta o dzień odnowienia kredytów** (dzień *Subscription start date* na stronie
+  Dashboard portalu deweloperskiego). API go nie podaje, a dzień dodania integracji był tylko
+  domysłem. Istniejące instalacje dostaną jednorazowe powiadomienie w **Naprawach** z polem do
+  potwierdzenia dnia; zapisanie opcji też je potwierdza.
 
 ## 2026.10.18.1
 

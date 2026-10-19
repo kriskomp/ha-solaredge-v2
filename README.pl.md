@@ -44,7 +44,7 @@ polsku i po angielsku i przełącza się sam według języka ustawionego w profi
 | Otwarte alerty | 1 kredyt/dobę | opcja |
 | Zużycie / import / eksport / autokonsumpcja dziś | +1 kredyt na odczyt | opcja, tylko instalacje z licznikiem |
 | Magazyn energii | +1 kredyt na odczyt | opcja, eksperymentalne |
-| Diagnostyka: wykorzystane, pozostałe i prognoza kredytów, interwał, następny odczyt, czas danych, wygaśnięcie zgody | 0 | |
+| Diagnostyka: wykorzystane, pozostałe i prognoza kredytów, interwał, następny odczyt, dane aktualne na, wygaśnięcie zgody | 0 | |
 
 Im więcej grup sensorów płatnych „na odczyt” włączysz, tym rzadziej integracja może odczytywać
 dane. Przed zapisaniem opcji integracja pokazuje wyliczony interwał.

@@ -8,6 +8,20 @@ Numeracja wersji: `RRRR.MM.DD.N`. Wydanie na GitHubie powstaje automatycznie po 
 w `manifest.json` na gałęzi `main`, a jego opis to odpowiednia sekcja tego pliku: najpierw po
 angielsku, niżej po polsku.
 
+## 2026.10.19.1
+
+- The diagnostic sensor "Data time" is now **"Data as of"**: it shows how far the readings reach
+  (end of the newest 15-minute interval, or the poll time if that interval was still filling)
+  instead of the interval's start. Attributes `interval_start` and `interval_end` show the
+  interval itself.
+
+### Polski
+
+- Sensor diagnostyczny „Czas danych” to teraz **„Dane aktualne na”**: pokazuje, do kiedy sięgają
+  dane (koniec najnowszego 15-minutowego przedziału albo moment odczytu, jeśli przedział się
+  jeszcze zapełniał), a nie początek przedziału. Atrybuty `interval_start` i `interval_end`
+  pokazują sam przedział.
+
 ## 2026.10.18.1
 
 First release. A SolarEdge Monitoring API v2 (Site Access) integration built from tests against

@@ -47,7 +47,7 @@ available in English and Polish and follows the language set in your Home Assist
 | Open alerts | 1 credit/day | option |
 | Consumption / import / export / self-consumption today | +1 credit per poll | option, only for sites with a meter |
 | Battery | +1 credit per poll | option, experimental |
-| Diagnostics: credits used, remaining and projected, poll interval, next poll, data time, consent expiry | 0 | |
+| Diagnostics: credits used, remaining and projected, poll interval, next poll, data as of, consent expiry | 0 | |
 
 The more "per poll" sensor groups you enable, the less often the integration can poll. Before
 saving the options, the integration shows the resulting interval.

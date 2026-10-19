@@ -164,7 +164,7 @@
         "name": "Next poll"
       },
       "data_time": {
-        "name": "Data time"
+        "name": "Data as of"
       },
       "consent_expires": {
         "name": "Consent expires"

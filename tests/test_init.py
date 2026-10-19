@@ -9,6 +9,7 @@ from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
+from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
@@ -100,6 +101,14 @@ async def test_restart_uses_cache_and_waits_for_the_next_slot(
     assert coordinator.next_poll == last_poll + timedelta(minutes=coordinator.interval_minutes)
     voltage = registry.async_get_entity_id("sensor", DOMAIN, "7E1234AB-01_ac_voltage")
     assert round(float(hass.states.get(voltage).state), 1) == 243.4
+    # The newest interval (12:30-12:45) was still filling at the cached poll (NOW - 5 min),
+    # so the data reaches up to that poll, not to the interval start.
+    as_of = registry.async_get_entity_id("sensor", DOMAIN, "1234567_data_time")
+    state = hass.states.get(as_of)
+    assert dt_util.parse_datetime(state.state) == min(
+        datetime.fromisoformat("2026-10-16T12:45:00+02:00"), last_poll
+    )
+    assert state.attributes["interval_start"] == "2026-10-16T12:30:00+02:00"
 
 
 async def test_first_poll_after_install(

@@ -7,15 +7,16 @@ from typing import Any
 
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import entity_registry as er, issue_registry as ir
 from homeassistant.setup import async_setup_component
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
-from pytest_homeassistant_custom_component.typing import ClientSessionGenerator
 
 from custom_components.solaredge_v2.api.models import Series, parse_telemetry
 from custom_components.solaredge_v2.const import DOMAIN
+from custom_components.solaredge_v2.repairs import async_create_fix_flow
 from custom_components.solaredge_v2.state import SiteState, Totals, summarize_inverters
 from tests.helpers import load
 
@@ -260,13 +261,11 @@ async def test_update_entity_does_not_spend_credits(
 async def test_unconfirmed_billing_day_is_fixed_in_repairs(
     hass: HomeAssistant,
     hass_storage: dict[str, Any],
-    hass_client: ClientSessionGenerator,
     aioclient_mock: AiohttpClientMocker,
     freezer: FrozenDateTimeFactory,
 ) -> None:
     """Entries made before the setup asked for the day get a fixable issue."""
     freezer.move_to(NOW)
-    assert await async_setup_component(hass, "repairs", {})
     entry = _entry(options={"billing_day": 18})
     entry.add_to_hass(hass)
     hass_storage[f"{DOMAIN}.{entry.entry_id}"] = {
@@ -283,16 +282,14 @@ async def test_unconfirmed_billing_day_is_fixed_in_repairs(
     assert issue is not None and issue.is_fixable
     assert issue.translation_placeholders == {"day": "18"}
 
-    client = await hass_client()
-    resp = await client.post(
-        "/api/repairs/issues/fix", json={"handler": DOMAIN, "issue_id": issue_id}
-    )
-    assert resp.status == 200
-    flow = await resp.json()
-    assert flow["step_id"] == "init"
-    resp = await client.post(f"/api/repairs/issues/fix/{flow['flow_id']}", json={"billing_day": 16})
-    assert resp.status == 200
-    assert (await resp.json())["type"] == "create_entry"
+    # Drive the fix flow the way Repairs does (form, then submit).
+    flow = await async_create_fix_flow(hass, issue_id, issue.data)
+    flow.hass = hass
+    result = await flow.async_step_init()
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+    result = await flow.async_step_init({"billing_day": 16})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
 
     assert entry.options["billing_day"] == 16

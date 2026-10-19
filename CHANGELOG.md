@@ -8,6 +8,31 @@ Numeracja wersji: `RRRR.MM.DD.N`. Wydanie na GitHubie powstaje automatycznie po 
 w `manifest.json` na gałęzi `main`, a jego opis to odpowiednia sekcja tego pliku: najpierw po
 angielsku, niżej po polsku.
 
+## 2026.10.19.1
+
+- The diagnostic sensor "Data time" is now **"Data as of"**: it shows how far the readings reach
+  (end of the newest 15-minute interval, or the poll time if that interval was still filling)
+  instead of the interval's start. Attributes `interval_start` and `interval_end` show the
+  interval itself.
+- **The setup asks for the day the credits reset** (the day of the *Subscription start date* on
+  the developer portal Dashboard). The API does not report it, and the day the integration was
+  added was only a guess. Existing installations get a one-time **Repairs** notification with a
+  field to confirm the day; saving the options also confirms it.
+- README: how the cycle follows months of 28 to 31 days; tests for leap years and cycle lengths.
+
+### Polski
+
+- Sensor diagnostyczny „Czas danych” to teraz **„Dane aktualne na”**: pokazuje, do kiedy sięgają
+  dane (koniec najnowszego 15-minutowego przedziału albo moment odczytu, jeśli przedział się
+  jeszcze zapełniał), a nie początek przedziału. Atrybuty `interval_start` i `interval_end`
+  pokazują sam przedział.
+- **Kreator pyta o dzień odnowienia kredytów** (dzień *Subscription start date* na stronie
+  Dashboard portalu deweloperskiego). API go nie podaje, a dzień dodania integracji był tylko
+  domysłem. Istniejące instalacje dostaną jednorazowe powiadomienie w **Naprawach** z polem do
+  potwierdzenia dnia; zapisanie opcji też je potwierdza.
+- README: jak cykl dopasowuje się do miesięcy od 28 do 31 dni; testy lat przestępnych i długości
+  cyklu.
+
 ## 2026.10.18.1
 
 First release. A SolarEdge Monitoring API v2 (Site Access) integration built from tests against

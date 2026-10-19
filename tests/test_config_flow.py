@@ -51,7 +51,12 @@ async def test_full_flow(hass: HomeAssistant, aioclient_mock: AiohttpClientMocke
     result = await hass.config_entries.flow.async_configure(
         flow_id, {"redirect_url": "http://localhost/callback?code=CODE&site_id=1234567"}
     )
+    # The API does not report the credit cycle, so the setup asks for it.
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "billing"
+    result = await hass.config_entries.flow.async_configure(flow_id, {"billing_day": 16})
     assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["options"] == {"billing_day": 16, "billing_day_confirmed": True}
     assert result["title"] == "Example site"
     data = result["data"]
     assert data[CONF_SITE_ID] == "1234567"
@@ -100,6 +105,8 @@ async def test_flow_offers_to_take_over_builtin_sensors(
     result = await hass.config_entries.flow.async_configure(
         flow_id, {"redirect_url": "http://localhost/callback?code=CODE&site_id=1234567"}
     )
+    assert result["step_id"] == "billing"
+    result = await hass.config_entries.flow.async_configure(flow_id, {"billing_day": 16})
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "migrate"
     assert "sensor.solaredge_lifetime_energy" in result["description_placeholders"]["entities"]
@@ -139,6 +146,8 @@ async def test_external_flow_catches_the_redirect(
     assert "Gotowe" in await resp.text()
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
+    assert result["step_id"] == "billing"
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"billing_day": 16})
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"]["redirect_uri"] == "https://ha.example.com/api/solaredge_v2/callback"
     _, _, body, _ = aioclient_mock.mock_calls[0]

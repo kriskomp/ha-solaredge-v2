@@ -25,6 +25,13 @@
           "redirect_url": "Adres z paska przeglądarki"
         }
       },
+      "billing": {
+        "title": "Dzień rozpoczęcia cyklu kredytów",
+        "description": "SolarEdge nie podaje cyklu rozliczeniowego przez API, a integracja potrzebuje go, żeby poprawnie liczyć kredyty.\n\nOtwórz [Dashboard w portalu deweloperskim]({dashboard}) i sprawdź **Subscription start date**: wpisz dzień miesiąca z tej daty (np. 16 dla 16.10.2026). Zwykle jest to dzień założenia konta deweloperskiego. Kredyty odnawiają się w tym dniu każdego miesiąca.",
+        "data": {
+          "billing_day": "Dzień miesiąca, w którym odnawiają się kredyty"
+        }
+      },
       "migrate": {
         "title": "Przejęcie sensorów wbudowanej integracji SolarEdge",
         "description": "Dla tej instalacji działa wbudowana integracja SolarEdge. Ta integracja może przejąć jej sensory z **tymi samymi ID encji, nazwami, obszarami i całą historią** (wykresy, statystyki, panel Energia):\n\n{entities}\n\nWbudowana integracja zostanie **wyłączona** (nie usunięta) - jej API v1 i tak przestaje działać w listopadzie. Jeśli Naprawy zaproponują usunięcie starych statystyk - nie usuwaj.",
@@ -164,7 +171,7 @@
         "name": "Następny odczyt"
       },
       "data_time": {
-        "name": "Czas danych"
+        "name": "Dane aktualne na"
       },
       "consent_expires": {
         "name": "Wygaśnięcie zgody"
@@ -215,6 +222,23 @@
     "core_migrated": {
       "title": "Przejęto sensory SolarEdge",
       "description": "Te sensory należą teraz do SolarEdge Monitoring API v2 i zachowały historię: {entities}.\n\nWbudowana integracja SolarEdge została wyłączona. Gdy wszystko działa, możesz ją usunąć (Ustawienia > Urządzenia i usługi). Jeśli Naprawy zaproponują usunięcie statystyk starych sensorów - nie usuwaj."
+    },
+    "billing_day_unconfirmed": {
+      "title": "Potwierdź dzień cyklu kredytów SolarEdge",
+      "fix_flow": {
+        "step": {
+          "init": {
+            "title": "Dzień rozpoczęcia cyklu kredytów",
+            "description": "Integracja przyjęła, że kredyty odnawiają się **{day}.** dnia miesiąca (w dniu jej dodania). SolarEdge nie podaje prawdziwego dnia przez API.\n\nOtwórz [Dashboard w portalu deweloperskim]({dashboard}), sprawdź **Subscription start date** i wpisz dzień miesiąca z tej daty. Zwykle jest to dzień założenia konta deweloperskiego.",
+            "data": {
+              "billing_day": "Dzień miesiąca, w którym odnawiają się kredyty"
+            }
+          }
+        },
+        "abort": {
+          "entry_not_found": "Wpis integracji już nie istnieje."
+        }
+      }
     }
   },
   "services": {

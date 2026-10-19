@@ -22,6 +22,13 @@ def test_cycle_bounds_mid_month() -> None:
 def test_cycle_bounds_short_months() -> None:
     assert cycle_bounds(date(2027, 2, 28), 31) == (date(2027, 2, 28), date(2027, 3, 31))
     assert cycle_bounds(date(2027, 2, 27), 31) == (date(2027, 1, 31), date(2027, 2, 28))
+    # Leap year: February has 29 days.
+    assert cycle_bounds(date(2028, 2, 29), 30) == (date(2028, 2, 29), date(2028, 3, 30))
+    assert cycle_bounds(date(2028, 2, 28), 30) == (date(2028, 1, 30), date(2028, 2, 29))
+    # The cycle length follows the calendar.
+    for today, length in ((date(2026, 10, 20), 31), (date(2026, 11, 20), 30), (date(2027, 2, 20), 28)):
+        start, end = cycle_bounds(today, 16)
+        assert (end - start).days == length
 
 
 def test_ledger_rolls_and_restores() -> None:

@@ -7,13 +7,16 @@ from typing import Any
 
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
+from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers import entity_registry as er, issue_registry as ir
 from homeassistant.setup import async_setup_component
+from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
 from custom_components.solaredge_v2.api.models import Series, parse_telemetry
 from custom_components.solaredge_v2.const import DOMAIN
+from custom_components.solaredge_v2.repairs import async_create_fix_flow
 from custom_components.solaredge_v2.state import SiteState, Totals, summarize_inverters
 from tests.helpers import load
 
@@ -22,7 +25,7 @@ NOW = datetime.fromisoformat("2026-10-16T12:34:00+02:00")
 TODAY = date(2026, 10, 16)
 
 
-def _entry(**extra: Any) -> MockConfigEntry:
+def _entry(options: dict[str, Any] | None = None, **extra: Any) -> MockConfigEntry:
     return MockConfigEntry(
         domain=DOMAIN,
         unique_id="1234567",
@@ -41,7 +44,7 @@ def _entry(**extra: Any) -> MockConfigEntry:
             "granted_at": "2026-10-16T06:51:00+00:00",
             **extra,
         },
-        options={"billing_day": 16},
+        options=options or {"billing_day": 16, "billing_day_confirmed": True},
     )
 
 
@@ -100,6 +103,14 @@ async def test_restart_uses_cache_and_waits_for_the_next_slot(
     assert coordinator.next_poll == last_poll + timedelta(minutes=coordinator.interval_minutes)
     voltage = registry.async_get_entity_id("sensor", DOMAIN, "7E1234AB-01_ac_voltage")
     assert round(float(hass.states.get(voltage).state), 1) == 243.4
+    # The newest interval (12:30-12:45) was still filling at the cached poll (NOW - 5 min),
+    # so the data reaches up to that poll, not to the interval start.
+    as_of = registry.async_get_entity_id("sensor", DOMAIN, "1234567_data_time")
+    state = hass.states.get(as_of)
+    assert dt_util.parse_datetime(state.state) == min(
+        datetime.fromisoformat("2026-10-16T12:45:00+02:00"), last_poll
+    )
+    assert state.attributes["interval_start"] == "2026-10-16T12:30:00+02:00"
 
 
 async def test_first_poll_after_install(
@@ -245,3 +256,43 @@ async def test_update_entity_does_not_spend_credits(
     await hass.async_block_till_done()
     assert aioclient_mock.call_count == 0
     assert entry.runtime_data.ledger.used == 42
+
+
+async def test_unconfirmed_billing_day_is_fixed_in_repairs(
+    hass: HomeAssistant,
+    hass_storage: dict[str, Any],
+    aioclient_mock: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Entries made before the setup asked for the day get a fixable issue."""
+    freezer.move_to(NOW)
+    entry = _entry(options={"billing_day": 18})
+    entry.add_to_hass(hass)
+    hass_storage[f"{DOMAIN}.{entry.entry_id}"] = {
+        "version": 1,
+        "minor_version": 1,
+        "key": f"{DOMAIN}.{entry.entry_id}",
+        "data": _cached_state(NOW - timedelta(minutes=5)),
+    }
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    issue_id = f"billing_day_unconfirmed_{entry.entry_id}"
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, issue_id)
+    assert issue is not None and issue.is_fixable
+    assert issue.translation_placeholders == {"day": "18"}
+
+    # Drive the fix flow the way Repairs does (form, then submit).
+    flow = await async_create_fix_flow(hass, issue_id, issue.data)
+    flow.hass = hass
+    result = await flow.async_step_init()
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+    result = await flow.async_step_init({"billing_day": 16})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+
+    assert entry.options["billing_day"] == 16
+    assert entry.options["billing_day_confirmed"] is True
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
+    assert aioclient_mock.call_count == 0

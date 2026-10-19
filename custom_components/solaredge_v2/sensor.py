@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -36,6 +36,7 @@ from .coordinator import Options, SolarEdgeConfigEntry, SolarEdgeCoordinator
 from .state import InverterReading
 
 PARALLEL_UPDATES = 0
+INTERVAL = timedelta(minutes=15)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -75,6 +76,30 @@ def _power_attrs(c: SolarEdgeCoordinator) -> dict[str, Any]:
     return {
         "data_time": reading.power_at.isoformat() if reading and reading.power_at else None,
         "note": "15-minute average reported by SolarEdge",
+    }
+
+
+def _data_as_of(c: SolarEdgeCoordinator) -> datetime | None:
+    """How fresh the readings are.
+
+    SolarEdge timestamps a 15-minute interval with its START, and the newest
+    interval is still filling when it is read. The data therefore reaches up to
+    the end of that interval or the moment of the poll, whichever is earlier.
+    """
+    reading = c.state.today
+    if reading is None or reading.power_at is None:
+        return None
+    end = reading.power_at + INTERVAL
+    last = c.state.last_success
+    return min(end, last) if last else end
+
+
+def _data_as_of_attrs(c: SolarEdgeCoordinator) -> dict[str, Any]:
+    reading = c.state.today
+    start = reading.power_at if reading else None
+    return {
+        "interval_start": start.isoformat() if start else None,
+        "interval_end": (start + INTERVAL).isoformat() if start else None,
     }
 
 
@@ -302,7 +327,8 @@ SITE_SENSORS: tuple[SiteSensorDescription, ...] = (
         translation_key="data_time",
         entity_category=EntityCategory.DIAGNOSTIC,
         device_class=SensorDeviceClass.TIMESTAMP,
-        value_fn=lambda c: c.state.today.power_at if c.state.today else None,
+        value_fn=_data_as_of,
+        attrs_fn=_data_as_of_attrs,
     ),
     SiteSensorDescription(
         key="consent_expires",

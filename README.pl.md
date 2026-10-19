@@ -44,7 +44,7 @@ polsku i po angielsku i przełącza się sam według języka ustawionego w profi
 | Otwarte alerty | 1 kredyt/dobę | opcja |
 | Zużycie / import / eksport / autokonsumpcja dziś | +1 kredyt na odczyt | opcja, tylko instalacje z licznikiem |
 | Magazyn energii | +1 kredyt na odczyt | opcja, eksperymentalne |
-| Diagnostyka: wykorzystane, pozostałe i prognoza kredytów, interwał, następny odczyt, czas danych, wygaśnięcie zgody | 0 | |
+| Diagnostyka: wykorzystane, pozostałe i prognoza kredytów, interwał, następny odczyt, dane aktualne na, wygaśnięcie zgody | 0 | |
 
 Im więcej grup sensorów płatnych „na odczyt” włączysz, tym rzadziej integracja może odczytywać
 dane. Przed zapisaniem opcji integracja pokazuje wyliczony interwał.
@@ -98,7 +98,13 @@ Na <https://developer.solaredge.com> (logowanie kontem mySolarEdge):
 4. Zapisz **Client ID** i **Client Secret**. Secret pokazywany jest tylko raz (*Download as .env*).
 
 Na stronie *Dashboard* sprawdź **Subscription start date**. Dzień tej daty to dzień miesiąca,
-w którym resetują się kredyty (opcja *billing day*).
+w którym resetują się kredyty. API go nie podaje, więc kreator o niego zapyta (krok 3).
+
+Cykl trwa od tego dnia do tego samego dnia następnego miesiąca, więc jego długość wynika
+z kalendarza (od 28 do 31 dni). Jeśli w krótszym miesiącu nie ma takiego dnia (29, 30 lub 31),
+cykl zaczyna się ostatniego dnia tego miesiąca. Tryb *stały* liczy interwał dla miesiąca
+31-dniowego, więc mieści się w każdym miesiącu; tryb *adaptacyjny* korzysta z faktycznej liczby
+dni pozostałych do końca cyklu.
 
 ### 3. Dodanie integracji
 
@@ -111,6 +117,9 @@ w którym resetują się kredyty (opcja *billing day*).
 3. **Wariant awaryjny (localhost):** po **Approve** przeglądarka pokaże błąd połączenia. Skopiuj
    **cały adres z paska** (`http://localhost/callback?code=...&site_id=...`) i wklej go w
    kreatorze. Kod jest ważny krótko.
+4. Wpisz **dzień odnowienia kredytów**: dzień miesiąca z *Subscription start date* na stronie
+   *Dashboard* portalu deweloperskiego (np. 16 dla 16.10.2026). Zwykle jest to dzień założenia
+   konta deweloperskiego.
 
 Jeśli w wariancie zalecanym coś pójdzie nie tak (np. adres nie zgadza się z tym w aplikacji
 SolarEdge), kreator pokaże przyczynę i pozwoli wkleić adres ręcznie.
@@ -145,6 +154,9 @@ Przejęte encje zachowują **to samo `entity_id`, nazwę, obszar, jednostkę i c
 
 Wbudowana integracja zostaje **wyłączona**, nie usunięta. Usuń ją ręcznie, gdy wszystko działa.
 Jeśli *Naprawy* zaproponują usunięcie statystyk starych sensorów, nie zgadzaj się.
+
+Instalacje dodane w wersji 2026.10.18.1 przyjęły dzień dodania integracji. Dostaną jednorazowe
+powiadomienie w *Ustawienia → Naprawy* z polem do potwierdzenia dnia.
 
 ### 4. Opcje
 

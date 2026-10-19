@@ -53,6 +53,7 @@ from .budget import (
 )
 from .const import (
     CONF_ALERTS,
+    CONF_BILLING_CONFIRMED,
     CONF_BILLING_DAY,
     CONF_GRANTED_AT,
     CONF_INITIAL,
@@ -71,6 +72,7 @@ from .const import (
     DEFAULT_RESERVE_PERCENT,
     DOMAIN,
     GRANT_MONTHS,
+    ISSUE_BILLING_DAY,
     ISSUE_CONSENT,
     ISSUE_CREDITS,
     LOGGER,
@@ -223,6 +225,7 @@ class SolarEdgeCoordinator(DataUpdateCoordinator[SiteState]):
             self.state.roll_day(today)
         self.async_set_updated_data(self.state)
         self._check_consent()
+        self._check_billing_day()
         self._schedule_midnight()
         self.schedule_next_poll()
 
@@ -631,6 +634,22 @@ class SolarEdgeCoordinator(DataUpdateCoordinator[SiteState]):
         """When the 24-month Site Access grant runs out."""
         granted = dt_util.parse_datetime(self.config_entry.data.get(CONF_GRANTED_AT) or "")
         return add_months(granted, GRANT_MONTHS) if granted else None
+
+    def _check_billing_day(self) -> None:
+        """Entries created before the setup asked for it only have a guessed day."""
+        if self.config_entry.options.get(CONF_BILLING_CONFIRMED):
+            ir.async_delete_issue(self.hass, DOMAIN, self._issue(ISSUE_BILLING_DAY))
+            return
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            self._issue(ISSUE_BILLING_DAY),
+            is_fixable=True,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key=ISSUE_BILLING_DAY,
+            translation_placeholders={"day": str(self.options.billing_day)},
+            data={"entry_id": self.config_entry.entry_id},
+        )
 
     def _check_consent(self) -> None:
         expires = self.consent_expires

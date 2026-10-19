@@ -59,6 +59,7 @@ from .callback_view import EXTERNAL_STEP
 from .const import (
     CALLBACK_PATH,
     CONF_ALERTS,
+    CONF_BILLING_CONFIRMED,
     CONF_BILLING_DAY,
     CONF_GRANTED_AT,
     CONF_INITIAL,
@@ -94,6 +95,17 @@ def _user_schema(redirect_default: str) -> vol.Schema:
             vol.Required(CONF_REDIRECT_URI, default=redirect_default): TextSelector(
                 TextSelectorConfig(type=TextSelectorType.URL)
             ),
+        }
+    )
+
+
+def billing_day_schema(default: int) -> vol.Schema:
+    """One field: day of the month the SolarEdge credits reset."""
+    return vol.Schema(
+        {
+            vol.Required(CONF_BILLING_DAY, default=default): NumberSelector(
+                NumberSelectorConfig(min=1, max=31, step=1, mode=NumberSelectorMode.BOX)
+            )
         }
     )
 
@@ -312,12 +324,31 @@ class SolarEdgeConfigFlow(ConfigFlow, domain=DOMAIN):
             CONF_GRANTED_AT: now.isoformat(),
             CONF_INITIAL: {"site": site, "calls": calls},
         }
-        self._options = {CONF_BILLING_DAY: now.astimezone(dt_util.get_default_time_zone()).day}
-        core = core_entry_for_site(self.hass, site_id)
-        if core is not None and migratable_entities(self.hass, site_id):
-            self._core_entry_id = core.entry_id
-            return await self.async_step_migrate()
-        return self.async_create_entry(title=self._title, data=self._data, options=self._options)
+        return await self.async_step_billing()
+
+    async def async_step_billing(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Ask for the credit-cycle day: the API does not report it."""
+        if user_input is not None:
+            self._options = {
+                CONF_BILLING_DAY: int(user_input[CONF_BILLING_DAY]),
+                CONF_BILLING_CONFIRMED: True,
+            }
+            site_id = str(self._data[CONF_SITE_ID])
+            core = core_entry_for_site(self.hass, site_id)
+            if core is not None and migratable_entities(self.hass, site_id):
+                self._core_entry_id = core.entry_id
+                return await self.async_step_migrate()
+            return self.async_create_entry(
+                title=self._title, data=self._data, options=self._options
+            )
+        today = dt_util.now().day
+        return self.async_show_form(
+            step_id="billing",
+            data_schema=billing_day_schema(today),
+            description_placeholders={"dashboard": "https://developer.solaredge.com/dashboard"},
+        )
 
     async def async_step_migrate(
         self, user_input: dict[str, Any] | None = None
@@ -473,6 +504,7 @@ class SolarEdgeOptionsFlow(OptionsFlow):
                 **user_input,
                 CONF_MONTHLY_CREDITS: int(user_input[CONF_MONTHLY_CREDITS]),
                 CONF_BILLING_DAY: int(user_input[CONF_BILLING_DAY]),
+                CONF_BILLING_CONFIRMED: True,
                 CONF_MIN_INTERVAL: int(user_input[CONF_MIN_INTERVAL]),
                 CONF_RESERVE_PERCENT: int(user_input[CONF_RESERVE_PERCENT]),
             }

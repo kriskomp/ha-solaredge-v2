@@ -32,6 +32,7 @@ CONF_TOTALS: Final = "totals"
 CONF_ALERTS: Final = "alerts"
 CONF_OVERVIEW: Final = "overview"
 CONF_STORAGE: Final = "storage"
+CONF_BILLING_CONFIRMED: Final = "billing_day_confirmed"
 
 DEFAULT_MONTHLY_CREDITS: Final = 2000
 DEFAULT_RESERVE_PERCENT: Final = 10
@@ -47,6 +48,7 @@ POWER_STALE: Final = timedelta(minutes=60)
 ISSUE_CREDITS: Final = "credits_exhausted"
 ISSUE_CONSENT: Final = "consent_expiring"
 ISSUE_MIGRATED: Final = "core_migrated"
+ISSUE_BILLING_DAY: Final = "billing_day_unconfirmed"
 
 SERVICE_SET_CREDITS: Final = "set_credits_used"
 SERVICE_REFRESH: Final = "refresh"

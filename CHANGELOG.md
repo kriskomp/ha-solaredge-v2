@@ -8,6 +8,21 @@ Numeracja wersji: `RRRR.MM.DD.N`. Wydanie na GitHubie powstaje automatycznie po 
 w `manifest.json` na gałęzi `main`, a jego opis to odpowiednia sekcja tego pliku: najpierw po
 angielsku, niżej po polsku.
 
+## 2026.10.20.1
+
+- Fix: opening the **"Confirm the SolarEdge credit cycle day"** repair ended with
+  "500 Internal Server Error". Home Assistant passes the issue data to the first step of a repair
+  and the integration took it for a submitted form. The form now opens and shows the assumed day.
+- Test that opens and submits the repair through the Repairs API, the way the frontend does.
+
+### Polski
+
+- Poprawka: otwarcie naprawy **„Potwierdź dzień cyklu kredytów SolarEdge”** kończyło się błędem
+  „500 Internal Server Error”. Home Assistant przekazuje dane zgłoszenia do pierwszego kroku
+  naprawy, a integracja uznawała je za wysłany formularz. Formularz otwiera się teraz poprawnie
+  i pokazuje przyjęty dzień.
+- Test, który otwiera i zatwierdza naprawę przez API Napraw, tak jak robi to interfejs.
+
 ## 2026.10.19.1
 
 - The diagnostic sensor "Data time" is now **"Data as of"**: it shows how far the readings reach

@@ -24,7 +24,9 @@ class BillingDayRepairFlow(RepairsFlow):
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
         if entry is None:
             return self.async_abort(reason="entry_not_found")
-        if user_input is not None:
+        # Repairs opens the flow with the issue data ({"issue_id": ...}) as the first
+        # input, so only a submitted form carries the day.
+        if user_input is not None and CONF_BILLING_DAY in user_input:
             # Saving the options reloads the entry, which clears this issue.
             self.hass.config_entries.async_update_entry(
                 entry,
@@ -39,7 +41,10 @@ class BillingDayRepairFlow(RepairsFlow):
         return self.async_show_form(
             step_id="init",
             data_schema=billing_day_schema(current),
-            description_placeholders={"dashboard": "https://developer.solaredge.com/dashboard"},
+            description_placeholders={
+                "day": str(current),
+                "dashboard": "https://developer.solaredge.com/dashboard",
+            },
         )
 
 

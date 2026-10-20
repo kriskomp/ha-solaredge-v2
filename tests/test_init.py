@@ -286,7 +286,8 @@ async def test_unconfirmed_billing_day_is_fixed_in_repairs(
     # Drive the fix flow the way Repairs does (form, then submit).
     flow = await async_create_fix_flow(hass, issue_id, issue.data)
     flow.hass = hass
-    result = await flow.async_step_init()
+    # Repairs passes the issue data as the first input; that is not a submitted form.
+    result = await flow.async_step_init({"issue_id": issue_id})
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "init"
     result = await flow.async_step_init({"billing_day": 16})

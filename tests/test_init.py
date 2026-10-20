@@ -13,6 +13,7 @@ from homeassistant.setup import async_setup_component
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
+from pytest_homeassistant_custom_component.typing import ClientSessionGenerator
 
 from custom_components.solaredge_v2.api.models import Series, parse_telemetry
 from custom_components.solaredge_v2.const import DOMAIN
@@ -285,7 +286,8 @@ async def test_unconfirmed_billing_day_is_fixed_in_repairs(
     # Drive the fix flow the way Repairs does (form, then submit).
     flow = await async_create_fix_flow(hass, issue_id, issue.data)
     flow.hass = hass
-    result = await flow.async_step_init()
+    # Repairs passes the issue data as the first input; that is not a submitted form.
+    result = await flow.async_step_init({"issue_id": issue_id})
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "init"
     result = await flow.async_step_init({"billing_day": 16})
@@ -296,3 +298,47 @@ async def test_unconfirmed_billing_day_is_fixed_in_repairs(
     assert entry.options["billing_day_confirmed"] is True
     assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
     assert aioclient_mock.call_count == 0
+
+
+async def test_billing_day_repair_through_the_repairs_api(
+    hass: HomeAssistant,
+    hass_storage: dict[str, Any],
+    hass_client: ClientSessionGenerator,
+    aioclient_mock: AiohttpClientMocker,
+) -> None:
+    """The fix flow opened the way the frontend does it (HTTP, real flow manager)."""
+    aioclient_mock.get(f"{API}/inverters/telemetry", json=load("inverters_telemetry"))
+    aioclient_mock.get(f"{API}/energy", json=load("energy_month"))
+    assert await async_setup_component(hass, "repairs", {})
+    entry = _entry(options={"billing_day": 18})
+    entry.add_to_hass(hass)
+    hass_storage[f"{DOMAIN}.{entry.entry_id}"] = {
+        "version": 1,
+        "minor_version": 1,
+        "key": f"{DOMAIN}.{entry.entry_id}",
+        "data": _cached_state(dt_util.now() - timedelta(minutes=1)),
+    }
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    issue_id = f"billing_day_unconfirmed_{entry.entry_id}"
+    client = await hass_client()
+    resp = await client.post(
+        "/api/repairs/issues/fix", json={"handler": DOMAIN, "issue_id": issue_id}
+    )
+    body = await resp.text()
+    assert resp.status == 200, body
+    flow = await resp.json()
+    assert flow["type"] == "form", flow
+    assert flow["step_id"] == "init"
+    assert flow["description_placeholders"]["day"] == "18"
+
+    resp = await client.post(
+        f"/api/repairs/issues/fix/{flow['flow_id']}", json={"billing_day": 16}
+    )
+    body = await resp.text()
+    assert resp.status == 200, body
+    assert (await resp.json())["type"] == "create_entry"
+    await hass.async_block_till_done()
+    assert entry.options["billing_day"] == 16
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None

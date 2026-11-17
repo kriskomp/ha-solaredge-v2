@@ -52,5 +52,16 @@ ISSUE_BILLING_DAY: Final = "billing_day_unconfirmed"
 
 SERVICE_SET_CREDITS: Final = "set_credits_used"
 SERVICE_REFRESH: Final = "refresh"
+SERVICE_EXPORT_ENERGY: Final = "export_energy"
 ATTR_CONFIG_ENTRY_ID: Final = "config_entry_id"
 ATTR_USED: Final = "used"
+ATTR_START_DATE: Final = "start_date"
+ATTR_END_DATE: Final = "end_date"
+ATTR_DAYS_PER_CALL: Final = "days_per_call"
+
+EXPORT_DEFAULT_DAYS_PER_CALL: Final = 31
+EXPORT_MAX_DAYS_PER_CALL: Final = 31  # the API: DAY resolution takes at most 1 month
+EXPORT_FILE: Final = "solaredge_v2_export.json"  # in /config
+EXPORT_MAX_DAYS: Final = 3660
+EXPORT_RATE_LIMIT_RETRIES: Final = 3
+EXPORT_RATE_LIMIT_WAIT: Final = 60  # seconds, when the API sends no retry-after

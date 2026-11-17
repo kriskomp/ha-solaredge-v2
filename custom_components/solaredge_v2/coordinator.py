@@ -17,11 +17,17 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
+import json
+import os
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    HomeAssistantError,
+    ServiceValidationError,
+)
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_point_in_utc_time
@@ -42,6 +48,7 @@ from .api import (
     parse_telemetry,
     refresh_tokens,
 )
+from .api.models import to_watt_hours
 from .budget import (
     MODE_ADAPTIVE,
     MODE_FIXED,
@@ -71,6 +78,10 @@ from .const import (
     DEFAULT_MONTHLY_CREDITS,
     DEFAULT_RESERVE_PERCENT,
     DOMAIN,
+    EXPORT_FILE,
+    EXPORT_MAX_DAYS,
+    EXPORT_RATE_LIMIT_RETRIES,
+    EXPORT_RATE_LIMIT_WAIT,
     GRANT_MONTHS,
     ISSUE_BILLING_DAY,
     ISSUE_CONSENT,
@@ -152,6 +163,39 @@ def add_months(moment: datetime, months: int) -> datetime:
             day -= 1
 
 
+def _read_export(path: str) -> dict[str, Any]:
+    """The export file, or an empty dict when there is none yet."""
+    try:
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except FileNotFoundError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_export(path: str, data: dict[str, Any]) -> None:
+    """Replace the export file in one step, so a crash never leaves half a file."""
+    tmp = f"{path}.tmp"
+    with open(tmp, "w", encoding="utf-8") as handle:
+        json.dump(data, handle, ensure_ascii=False, indent=1)
+    os.replace(tmp, path)
+
+
+def _blocks(missing: list[date], size: int) -> list[tuple[date, date]]:
+    """Runs of consecutive missing days, cut into blocks of at most ``size`` days."""
+    blocks: list[tuple[date, date]] = []
+    for day in missing:
+        if (
+            blocks
+            and day == blocks[-1][1] + timedelta(days=1)
+            and (day - blocks[-1][0]).days < size
+        ):
+            blocks[-1] = (blocks[-1][0], day)
+        else:
+            blocks.append((day, day))
+    return blocks
+
+
 class SolarEdgeCoordinator(DataUpdateCoordinator[SiteState]):
     """Owns the API client, the token, the credit ledger and the poll schedule."""
 
@@ -175,6 +219,7 @@ class SolarEdgeCoordinator(DataUpdateCoordinator[SiteState]):
         )
         self._token: TokenSet = TokenSet.from_dict(entry.data[CONF_TOKEN])
         self._token_lock = asyncio.Lock()
+        self._export_lock = asyncio.Lock()
         self.client = SolarEdgeClient(
             async_get_clientsession(hass), self._access_token, on_send=self._count_call
         )
@@ -623,6 +668,122 @@ class SolarEdgeCoordinator(DataUpdateCoordinator[SiteState]):
             if sample.value is not None and sample.timestamp and sample.timestamp.year < today.year:
                 total += sample.value
         state.totals.set_prior_years(total, today)
+
+    # ------------------------------------------------------------------ export
+
+    async def async_export_energy(
+        self, start: date, end: date, days_per_call: int
+    ) -> dict[str, Any]:
+        """Daily energy for the site days ``start``..``end``, kept in ONE file in /config.
+
+        The file is read first and only the days it does not hold yet are requested, one call
+        per block of ``days_per_call`` days (one credit each, counted in the ledger). It is
+        rewritten after every block, so a timeout or a failure never loses what was fetched
+        and repeating the action costs nothing for days that are already there. Today is a
+        partial day and is never stored.
+        """
+        today = self.today()
+        if start > end or end > today or (end - start).days >= EXPORT_MAX_DAYS:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="export_range")
+        last_day = min(end, today - timedelta(days=1))
+        path = self.hass.config.path(EXPORT_FILE)
+        errors: list[dict[str, str]] = []
+        calls = fetched = 0
+        async with self._export_lock:
+            stored = await self.hass.async_add_executor_job(_read_export, path)
+            if stored and str(stored.get("site_id")) != str(self.site_id):
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="export_site",
+                    translation_placeholders={"file": EXPORT_FILE},
+                )
+            days: dict[date, float | None] = {
+                date.fromisoformat(row["date"]): row["wh"] for row in stored.get("values", [])
+            }
+            wanted = [start + timedelta(n) for n in range((last_day - start).days + 1)]
+            windows = _blocks([d for d in wanted if d not in days], days_per_call)
+            if windows and (self.ledger.exhausted or len(windows) > self.credits_remaining):
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="export_credits",
+                    translation_placeholders={
+                        "calls": str(len(windows)),
+                        "remaining": str(self.credits_remaining),
+                    },
+                )
+            for first, last in windows:
+                frm = self.local_midnight(first)
+                to = min(self.local_midnight(last + timedelta(days=1)), dt_util.utcnow())
+                try:
+                    calls += 1
+                    body = await self._energy_with_retry(frm, to)
+                except SolarEdgeError as err:
+                    errors.append(
+                        {"from": first.isoformat(), "to": last.isoformat(), "error": str(err)}
+                    )
+                    if isinstance(err, SolarEdgeAuthenticationError):
+                        self.config_entry.async_start_reauth(self.hass)
+                    elif isinstance(err, SolarEdgeCreditLimitError):
+                        self.ledger.exhausted = True
+                        self.ledger.used = max(self.ledger.used, self.options.monthly_credits)
+                    await self.async_save()
+                    break
+                series = Series.from_api(body)
+                unit = series.unit or "WH"  # the request asks for Wh
+                got: dict[date, float | None] = {}
+                for sample in series.samples:
+                    if sample.timestamp is None:
+                        continue
+                    sample_day = sample.timestamp.astimezone(self.site_tz).date()
+                    if first <= sample_day <= last:
+                        got.setdefault(sample_day, to_watt_hours(sample.value, unit))
+                # A day the API has no value for is stored as null so it is not asked again.
+                for n in range((last - first).days + 1):
+                    day = first + timedelta(n)
+                    days[day] = got.get(day)
+                fetched += (last - first).days + 1
+                await self.hass.async_add_executor_job(
+                    _write_export,
+                    path,
+                    {
+                        "site_id": str(self.site_id),
+                        "resolution": "DAY",
+                        "unit": "Wh",
+                        "values": [{"date": d.isoformat(), "wh": days[d]} for d in sorted(days)],
+                    },
+                )
+                await self.async_save()
+        if errors and not fetched:
+            raise HomeAssistantError(errors[0]["error"])
+        have = [d for d in wanted if d in days]
+        return {
+            "site_id": self.site_id,
+            "file": path,
+            "resolution": "DAY",
+            "unit": "Wh",
+            "start": start.isoformat(),
+            "end": last_day.isoformat(),
+            "calls": calls,
+            "days_fetched": fetched,
+            "days_missing": len(wanted) - len(have),
+            "credits_used": self.ledger.used,
+            "credits_remaining": self.credits_remaining,
+            "total_wh": sum(days[d] or 0.0 for d in have),
+            "values": [{"date": d.isoformat(), "wh": days[d]} for d in have],
+            "errors": errors,
+        }
+
+    async def _energy_with_retry(self, frm: datetime, to: datetime) -> Any:
+        """GET /energy; waits out the per-minute window instead of failing the whole export."""
+        retries = 0
+        while True:
+            try:
+                return await self.client.energy(self.site_id, "DAY", frm, to)
+            except SolarEdgeRateLimitError as err:
+                retries += 1
+                if retries > EXPORT_RATE_LIMIT_RETRIES:
+                    raise
+                await asyncio.sleep(err.retry_after or EXPORT_RATE_LIMIT_WAIT)
 
     # ------------------------------------------------------------------ issues
 

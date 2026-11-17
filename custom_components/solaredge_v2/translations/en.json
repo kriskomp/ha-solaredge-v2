@@ -208,6 +208,15 @@
     },
     "entry_not_found": {
       "message": "Choose exactly one SolarEdge site (config_entry_id)."
+    },
+    "export_range": {
+      "message": "The range must start on or before the last day, end no later than today and span less than 3660 days."
+    },
+    "export_credits": {
+      "message": "The export needs {calls} API calls but only {remaining} credits are left in this cycle."
+    },
+    "export_site": {
+      "message": "The file {file} in /config belongs to another site. Move or rename it first."
     }
   },
   "issues": {
@@ -263,6 +272,28 @@
         "config_entry_id": {
           "name": "Site",
           "description": "Only needed with more than one site."
+        }
+      }
+    },
+    "export_energy": {
+      "name": "Export daily energy",
+      "description": "Fetch the daily energy production from the SolarEdge API into one file in /config (solaredge_v2_export.json). Days already in the file are not requested again; the file is saved after every call. One call per block of days, each costs one credit.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Site",
+          "description": "Only needed with more than one site."
+        },
+        "start_date": {
+          "name": "First day",
+          "description": "First site day."
+        },
+        "end_date": {
+          "name": "Last day",
+          "description": "Last site day (default: yesterday; today is a partial day and is not stored)."
+        },
+        "days_per_call": {
+          "name": "Days per call",
+          "description": "Days requested in one API call (default and maximum 31, the API limit for DAY resolution)."
         }
       }
     }

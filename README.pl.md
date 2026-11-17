@@ -175,6 +175,14 @@ Odczyt poza harmonogramem: akcja `solaredge_v2.refresh`.
 - `solaredge_v2.set_credits_used`: ustawia lokalny licznik na liczbę z portalu
   (*Dashboard → Credit cycle*).
 - `solaredge_v2.refresh`: natychmiastowy odczyt (zużywa kredyty).
+- `solaredge_v2.export_energy`: pobiera **energię dobową** (Wh) z API dla
+  `start_date`..`end_date` do JEDNEGO pliku, `/config/solaredge_v2_export.json`. Plik jest
+  czytany najpierw i pobierane są tylko brakujące w nim dni (jedno wywołanie = jeden kredyt na
+  `days_per_call` dni, maks. 31: API przyjmuje dla DAY najwyżej 1 miesiąc), a zapis następuje po
+  każdym wywołaniu, więc timeout ani błąd nic nie tracą, a powtórzenie akcji nic nie kosztuje dla
+  dni już zapisanych. Dziś jest niepełny i nie jest zapisywany; dzień bez wartości w API trafia do
+  pliku jako `null`. Odpowiedź zawiera wiersze pliku dla zakresu, więc późniejsze wywołanie
+  pokazuje, co już jest. Odmawia, gdy w cyklu zostało za mało kredytów; czeka na limit na minutę.
 
 ## Pamięć podręczna i licznik kredytów (`.storage`)
 

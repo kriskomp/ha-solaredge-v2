@@ -10,23 +10,21 @@ angielsku, niżej po polsku.
 
 ## 2026.11.17.1
 
-- New action **`solaredge_v2.export_energy`**: returns the daily energy (Wh) the API reports for a
-  range of days as the action response, for checking or backfilling long-term statistics.
-  One credit per block of days (`days_per_call`, default 31), counted in the credit ledger;
-  refused when the cycle has too few credits; waits out the per-minute limit; on an error it
-  returns the days already fetched together with the error. Nothing is stored.
-- The `DAY` resolution of `/energy` and its window limit are not verified against the live API
-  yet; try one month first.
+- New action **`solaredge_v2.export_energy`**: fetches the daily energy (Wh) from the API into
+  one file, `/config/solaredge_v2_export.json`, for checking or backfilling long-term
+  statistics. Reads the file first and requests only the missing days (one credit per block,
+  `days_per_call` max 31 = the API limit for `DAY`), saves after every call so nothing is lost
+  on a timeout or error, never stores today; refused when the cycle has too few credits; waits
+  out the per-minute limit. A day with no API value is stored as `null`.
 
 ### Polski
 
-- Nowa akcja **`solaredge_v2.export_energy`**: zwraca energię dobową (Wh) z API dla zakresu dni
-  jako odpowiedź akcji, do kontroli albo uzupełnienia statystyk długoterminowych. Jeden kredyt
-  na blok dni (`days_per_call`, domyślnie 31), liczony w liczniku kredytów; odmawia, gdy w cyklu
-  zostało za mało kredytów; czeka na limit na minutę; przy błędzie zwraca pobrane już dni razem
-  z błędem. Nic nie jest zapisywane.
-- Rozdzielczość `DAY` w `/energy` i limit okna nie zostały jeszcze sprawdzone na żywym API;
-  najpierw spróbuj jednego miesiąca.
+- Nowa akcja **`solaredge_v2.export_energy`**: pobiera energię dobową (Wh) z API do jednego
+  pliku, `/config/solaredge_v2_export.json`, do kontroli albo uzupełnienia statystyk
+  długoterminowych. Czyta plik i pobiera tylko brakujące dni (jeden kredyt na blok,
+  `days_per_call` maks. 31 = limit API dla `DAY`), zapisuje po każdym wywołaniu, więc timeout ani
+  błąd nic nie tracą, nigdy nie zapisuje dnia dzisiejszego; odmawia, gdy w cyklu zostało za mało
+  kredytów; czeka na limit na minutę. Dzień bez wartości w API trafia do pliku jako `null`.
 
 ## 2026.10.20.1
 

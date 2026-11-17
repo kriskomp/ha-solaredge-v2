@@ -60,6 +60,8 @@ ATTR_END_DATE: Final = "end_date"
 ATTR_DAYS_PER_CALL: Final = "days_per_call"
 
 EXPORT_DEFAULT_DAYS_PER_CALL: Final = 31
+EXPORT_MAX_DAYS_PER_CALL: Final = 31  # the API: DAY resolution takes at most 1 month
+EXPORT_FILE: Final = "solaredge_v2_export.json"  # in /config
 EXPORT_MAX_DAYS: Final = 3660
 EXPORT_RATE_LIMIT_RETRIES: Final = 3
 EXPORT_RATE_LIMIT_WAIT: Final = 60  # seconds, when the API sends no retry-after

@@ -17,6 +17,8 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
+import json
+import os
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -76,6 +78,7 @@ from .const import (
     DEFAULT_MONTHLY_CREDITS,
     DEFAULT_RESERVE_PERCENT,
     DOMAIN,
+    EXPORT_FILE,
     EXPORT_MAX_DAYS,
     EXPORT_RATE_LIMIT_RETRIES,
     EXPORT_RATE_LIMIT_WAIT,
@@ -158,6 +161,39 @@ def add_months(moment: datetime, months: int) -> datetime:
             return moment.replace(year=year, month=month, day=day)
         except ValueError:
             day -= 1
+
+
+def _read_export(path: str) -> dict[str, Any]:
+    """The export file, or an empty dict when there is none yet."""
+    try:
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except FileNotFoundError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_export(path: str, data: dict[str, Any]) -> None:
+    """Replace the export file in one step, so a crash never leaves half a file."""
+    tmp = f"{path}.tmp"
+    with open(tmp, "w", encoding="utf-8") as handle:
+        json.dump(data, handle, ensure_ascii=False, indent=1)
+    os.replace(tmp, path)
+
+
+def _blocks(missing: list[date], size: int) -> list[tuple[date, date]]:
+    """Runs of consecutive missing days, cut into blocks of at most ``size`` days."""
+    blocks: list[tuple[date, date]] = []
+    for day in missing:
+        if (
+            blocks
+            and day == blocks[-1][1] + timedelta(days=1)
+            and (day - blocks[-1][0]).days < size
+        ):
+            blocks[-1] = (blocks[-1][0], day)
+        else:
+            blocks.append((day, day))
+    return blocks
 
 
 class SolarEdgeCoordinator(DataUpdateCoordinator[SiteState]):
@@ -638,35 +674,43 @@ class SolarEdgeCoordinator(DataUpdateCoordinator[SiteState]):
     async def async_export_energy(
         self, start: date, end: date, days_per_call: int
     ) -> dict[str, Any]:
-        """Daily energy for the site days ``start``..``end`` (inclusive), as the API reports it.
+        """Daily energy for the site days ``start``..``end``, kept in ONE file in /config.
 
-        One call per ``days_per_call`` days, each costing one credit; the calls are counted in
-        the same ledger as the polling. Nothing is stored: the caller keeps the answer.
-        A failure part way returns what was fetched plus the error, so the credits spent
-        are not wasted.
+        The file is read first and only the days it does not hold yet are requested, one call
+        per block of ``days_per_call`` days (one credit each, counted in the ledger). It is
+        rewritten after every block, so a timeout or a failure never loses what was fetched
+        and repeating the action costs nothing for days that are already there. Today is a
+        partial day and is never stored.
         """
         today = self.today()
         if start > end or end > today or (end - start).days >= EXPORT_MAX_DAYS:
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="export_range")
-        windows: list[tuple[date, date]] = []
-        day = start
-        while day <= end:
-            last = min(day + timedelta(days=days_per_call - 1), end)
-            windows.append((day, last))
-            day = last + timedelta(days=1)
-        if self.ledger.exhausted or len(windows) > self.credits_remaining:
-            raise ServiceValidationError(
-                translation_domain=DOMAIN,
-                translation_key="export_credits",
-                translation_placeholders={
-                    "calls": str(len(windows)),
-                    "remaining": str(self.credits_remaining),
-                },
-            )
-        values: dict[date, float | None] = {}
+        last_day = min(end, today - timedelta(days=1))
+        path = self.hass.config.path(EXPORT_FILE)
         errors: list[dict[str, str]] = []
-        calls = 0
+        calls = fetched = 0
         async with self._export_lock:
+            stored = await self.hass.async_add_executor_job(_read_export, path)
+            if stored and str(stored.get("site_id")) != str(self.site_id):
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="export_site",
+                    translation_placeholders={"file": EXPORT_FILE},
+                )
+            days: dict[date, float | None] = {
+                date.fromisoformat(row["date"]): row["wh"] for row in stored.get("values", [])
+            }
+            wanted = [start + timedelta(n) for n in range((last_day - start).days + 1)]
+            windows = _blocks([d for d in wanted if d not in days], days_per_call)
+            if windows and (self.ledger.exhausted or len(windows) > self.credits_remaining):
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="export_credits",
+                    translation_placeholders={
+                        "calls": str(len(windows)),
+                        "remaining": str(self.credits_remaining),
+                    },
+                )
             for first, last in windows:
                 frm = self.local_midnight(first)
                 to = min(self.local_midnight(last + timedelta(days=1)), dt_util.utcnow())
@@ -682,29 +726,50 @@ class SolarEdgeCoordinator(DataUpdateCoordinator[SiteState]):
                     elif isinstance(err, SolarEdgeCreditLimitError):
                         self.ledger.exhausted = True
                         self.ledger.used = max(self.ledger.used, self.options.monthly_credits)
+                    await self.async_save()
                     break
                 series = Series.from_api(body)
                 unit = series.unit or "WH"  # the request asks for Wh
+                got: dict[date, float | None] = {}
                 for sample in series.samples:
                     if sample.timestamp is None:
                         continue
                     sample_day = sample.timestamp.astimezone(self.site_tz).date()
                     if first <= sample_day <= last:
-                        values.setdefault(sample_day, to_watt_hours(sample.value, unit))
-            await self.async_save()
-        if not values and errors:
+                        got.setdefault(sample_day, to_watt_hours(sample.value, unit))
+                # A day the API has no value for is stored as null so it is not asked again.
+                for n in range((last - first).days + 1):
+                    day = first + timedelta(n)
+                    days[day] = got.get(day)
+                fetched += (last - first).days + 1
+                await self.hass.async_add_executor_job(
+                    _write_export,
+                    path,
+                    {
+                        "site_id": str(self.site_id),
+                        "resolution": "DAY",
+                        "unit": "Wh",
+                        "values": [{"date": d.isoformat(), "wh": days[d]} for d in sorted(days)],
+                    },
+                )
+                await self.async_save()
+        if errors and not fetched:
             raise HomeAssistantError(errors[0]["error"])
+        have = [d for d in wanted if d in days]
         return {
             "site_id": self.site_id,
+            "file": path,
             "resolution": "DAY",
             "unit": "Wh",
             "start": start.isoformat(),
-            "end": end.isoformat(),
+            "end": last_day.isoformat(),
             "calls": calls,
+            "days_fetched": fetched,
+            "days_missing": len(wanted) - len(have),
             "credits_used": self.ledger.used,
             "credits_remaining": self.credits_remaining,
-            "total_wh": sum(v for v in values.values() if v is not None),
-            "values": [{"date": d.isoformat(), "wh": values[d]} for d in sorted(values)],
+            "total_wh": sum(days[d] or 0.0 for d in have),
+            "values": [{"date": d.isoformat(), "wh": days[d]} for d in have],
             "errors": errors,
         }
 

@@ -1,8 +1,10 @@
-"""The export_energy action: daily energy straight from the API, counted in the ledger."""
+"""The export_energy action: daily energy from the API into one file, resumed on repeat."""
 
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+import json
+from pathlib import Path
 from typing import Any
 
 from freezegun.api import FrozenDateTimeFactory
@@ -57,8 +59,11 @@ def _days(first: date, count: int, wh: float = 1000.0) -> dict[str, Any]:
     }
 
 
-async def _setup(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> MockConfigEntry:
+async def _setup(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, tmp_path: Path
+) -> MockConfigEntry:
     freezer.move_to(NOW)
+    hass.config.config_dir = str(tmp_path)
     entry = _entry()
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
@@ -73,9 +78,12 @@ async def _export(hass: HomeAssistant, **data: Any) -> dict[str, Any]:
 
 
 async def test_export_returns_daily_values_and_counts_the_call(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer: FrozenDateTimeFactory
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+    tmp_path: Path,
 ) -> None:
-    entry = await _setup(hass, freezer)
+    entry = await _setup(hass, freezer, tmp_path)
     aioclient_mock.get(f"{API}/energy", json=_days(date(2026, 5, 19), 3))
     used_before = entry.runtime_data.ledger.used
 
@@ -90,6 +98,9 @@ async def test_export_returns_daily_values_and_counts_the_call(
         {"date": "2026-05-21", "wh": 1002.0},
     ]
     assert result["total_wh"] == 3003.0
+    saved = json.loads((tmp_path / "solaredge_v2_export.json").read_text())
+    assert saved["site_id"] == "1234567" and saved["unit"] == "Wh"
+    assert saved["values"] == result["values"]
     assert entry.runtime_data.ledger.used == used_before + 1
     assert result["credits_used"] == used_before + 1
     query = aioclient_mock.mock_calls[-1][1].query
@@ -100,9 +111,12 @@ async def test_export_returns_daily_values_and_counts_the_call(
 
 
 async def test_export_splits_long_ranges_and_drops_overlap(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer: FrozenDateTimeFactory
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+    tmp_path: Path,
 ) -> None:
-    entry = await _setup(hass, freezer)
+    entry = await _setup(hass, freezer, tmp_path)
     # Every call answers with all 40 days; each block keeps only its own days.
     aioclient_mock.get(f"{API}/energy", json=_days(date(2026, 5, 1), 40))
     used_before = entry.runtime_data.ledger.used
@@ -117,9 +131,12 @@ async def test_export_splits_long_ranges_and_drops_overlap(
 
 
 async def test_export_refuses_when_credits_are_short(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer: FrozenDateTimeFactory
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+    tmp_path: Path,
 ) -> None:
-    entry = await _setup(hass, freezer)
+    entry = await _setup(hass, freezer, tmp_path)
     entry.runtime_data.ledger.used = entry.runtime_data.options.monthly_credits - 1
     with pytest.raises(ServiceValidationError):
         await _export(hass, start_date="2026-01-01", end_date="2026-06-30", days_per_call=31)
@@ -134,19 +151,23 @@ async def test_export_rejects_bad_ranges(
     hass: HomeAssistant,
     aioclient_mock: AiohttpClientMocker,
     freezer: FrozenDateTimeFactory,
+    tmp_path: Path,
     start: str,
     end: str,
 ) -> None:
-    await _setup(hass, freezer)
+    await _setup(hass, freezer, tmp_path)
     with pytest.raises(ServiceValidationError):
         await _export(hass, start_date=start, end_date=end)
     assert aioclient_mock.call_count == 0
 
 
 async def test_export_failure_is_reported_and_still_counted(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer: FrozenDateTimeFactory
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+    tmp_path: Path,
 ) -> None:
-    entry = await _setup(hass, freezer)
+    entry = await _setup(hass, freezer, tmp_path)
     aioclient_mock.get(
         f"{API}/energy", status=400, json={"detail": "Window too long for DAY resolution"}
     )
@@ -158,3 +179,62 @@ async def test_export_failure_is_reported_and_still_counted(
     # Stops at the first failed block instead of spending a credit on every one.
     assert aioclient_mock.call_count == 1
     assert entry.runtime_data.ledger.used == used_before + 1
+    assert not (tmp_path / "solaredge_v2_export.json").exists()
+
+
+async def test_export_resumes_from_the_file_and_appends(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+    tmp_path: Path,
+) -> None:
+    entry = await _setup(hass, freezer, tmp_path)
+    aioclient_mock.get(f"{API}/energy", json=_days(date(2026, 5, 1), 31))
+    await _export(hass, start_date="2026-05-01", end_date="2026-05-31")
+    assert aioclient_mock.call_count == 1
+
+    # Same range again: everything is in the file, no call and no credit.
+    used = entry.runtime_data.ledger.used
+    again = await _export(hass, start_date="2026-05-01", end_date="2026-05-31")
+    assert aioclient_mock.call_count == 1
+    assert again["calls"] == 0 and again["days_missing"] == 0
+    assert len(again["values"]) == 31
+    assert entry.runtime_data.ledger.used == used
+
+    # A longer range asks only for the days that are not in the file yet.
+    aioclient_mock.get(f"{API}/energy", json=_days(date(2026, 6, 1), 9))
+    longer = await _export(hass, start_date="2026-05-01", end_date="2026-06-09")
+    assert aioclient_mock.call_count == 2
+    assert longer["calls"] == 1 and longer["days_fetched"] == 9
+    assert aioclient_mock.mock_calls[-1][1].query["from"] == "2026-05-31T22:00:00Z"
+    saved = json.loads((tmp_path / "solaredge_v2_export.json").read_text())
+    assert len(saved["values"]) == 40
+    assert saved["values"][0]["date"] == "2026-05-01"
+
+
+async def test_export_never_stores_today(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+    tmp_path: Path,
+) -> None:
+    await _setup(hass, freezer, tmp_path)
+    aioclient_mock.get(f"{API}/energy", json=_days(date(2026, 10, 14), 3))
+
+    result = await _export(hass, start_date="2026-10-14", end_date="2026-10-16")
+
+    assert result["end"] == "2026-10-15"
+    assert [v["date"] for v in result["values"]] == ["2026-10-14", "2026-10-15"]
+
+
+async def test_export_refuses_a_file_of_another_site(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+    tmp_path: Path,
+) -> None:
+    await _setup(hass, freezer, tmp_path)
+    (tmp_path / "solaredge_v2_export.json").write_text(json.dumps({"site_id": "999", "values": []}))
+    with pytest.raises(ServiceValidationError):
+        await _export(hass, start_date="2026-05-01", end_date="2026-05-02")
+    assert aioclient_mock.call_count == 0

@@ -35,5 +35,5 @@ export_energy:
       selector:
         number:
           min: 1
-          max: 366
+          max: 31
           mode: box

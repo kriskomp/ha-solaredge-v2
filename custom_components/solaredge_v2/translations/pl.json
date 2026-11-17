@@ -214,6 +214,9 @@
     },
     "export_credits": {
       "message": "Eksport wymaga {calls} wywołań API, a w tym cyklu zostało tylko {remaining} kredytów."
+    },
+    "export_site": {
+      "message": "Plik {file} w /config należy do innej instalacji. Najpierw go przenieś lub zmień nazwę."
     }
   },
   "issues": {
@@ -274,7 +277,7 @@
     },
     "export_energy": {
       "name": "Eksport energii dobowej",
-      "description": "Zwraca dobową produkcję energii z API SolarEdge dla zakresu dni jako odpowiedź akcji (nic nie jest zapisywane). Jedno wywołanie na blok dni, każde kosztuje jeden kredyt.",
+      "description": "Pobiera energię dobową z API SolarEdge do jednego pliku w /config (solaredge_v2_export.json). Dni, które są już w pliku, nie są pobierane ponownie; plik jest zapisywany po każdym wywołaniu. Jedno wywołanie na blok dni, każde kosztuje jeden kredyt.",
       "fields": {
         "config_entry_id": {
           "name": "Instalacja",
@@ -282,15 +285,15 @@
         },
         "start_date": {
           "name": "Pierwszy dzień",
-          "description": "Pierwszy dzień instalacji do zwrócenia."
+          "description": "Pierwszy dzień instalacji."
         },
         "end_date": {
           "name": "Ostatni dzień",
-          "description": "Ostatni dzień do zwrócenia (domyślnie dziś, dzień niepełny)."
+          "description": "Ostatni dzień (domyślnie wczoraj; dziś jest niepełny i nie jest zapisywany)."
         },
         "days_per_call": {
           "name": "Dni na wywołanie",
-          "description": "Ile dni prosimy w jednym wywołaniu API (domyślnie 31). Zmniejsz, jeśli API odrzuca okno."
+          "description": "Dni pobierane jednym wywołaniem API (domyślnie i maksymalnie 31, limit API dla rozdzielczości DAY)."
         }
       }
     }

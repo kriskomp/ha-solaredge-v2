@@ -26,6 +26,7 @@ from .const import (
     CONF_SITE_ID,
     DOMAIN,
     EXPORT_DEFAULT_DAYS_PER_CALL,
+    EXPORT_MAX_DAYS_PER_CALL,
     MANUFACTURER,
     SERVICE_EXPORT_ENERGY,
     SERVICE_REFRESH,
@@ -101,7 +102,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                 vol.Optional(ATTR_END_DATE): cv.date,
                 vol.Optional(
                     ATTR_DAYS_PER_CALL, default=EXPORT_DEFAULT_DAYS_PER_CALL
-                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=366)),
+                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=EXPORT_MAX_DAYS_PER_CALL)),
             }
         ),
         supports_response=SupportsResponse.ONLY,

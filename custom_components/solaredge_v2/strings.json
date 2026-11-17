@@ -214,6 +214,9 @@
     },
     "export_credits": {
       "message": "The export needs {calls} API calls but only {remaining} credits are left in this cycle."
+    },
+    "export_site": {
+      "message": "The file {file} in /config belongs to another site. Move or rename it first."
     }
   },
   "issues": {
@@ -274,7 +277,7 @@
     },
     "export_energy": {
       "name": "Export daily energy",
-      "description": "Return the daily energy production from the SolarEdge API for a range of days, as the action response (nothing is stored). One call per block of days, each costs one credit.",
+      "description": "Fetch the daily energy production from the SolarEdge API into one file in /config (solaredge_v2_export.json). Days already in the file are not requested again; the file is saved after every call. One call per block of days, each costs one credit.",
       "fields": {
         "config_entry_id": {
           "name": "Site",
@@ -282,15 +285,15 @@
         },
         "start_date": {
           "name": "First day",
-          "description": "First site day to return."
+          "description": "First site day."
         },
         "end_date": {
           "name": "Last day",
-          "description": "Last site day to return (default: today, a partial day)."
+          "description": "Last site day (default: yesterday; today is a partial day and is not stored)."
         },
         "days_per_call": {
           "name": "Days per call",
-          "description": "Days requested in one API call (default 31). Lower it if the API rejects the window."
+          "description": "Days requested in one API call (default and maximum 31, the API limit for DAY resolution)."
         }
       }
     }

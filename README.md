@@ -180,13 +180,14 @@ outside the schedule, use the `solaredge_v2.refresh` action.
 - `solaredge_v2.set_credits_used`: sets the local counter to the number shown in the portal
   (*Dashboard → Credit cycle*).
 - `solaredge_v2.refresh`: polls immediately (spends credits).
-- `solaredge_v2.export_energy`: returns the **daily energy** (Wh) the API reports for
-  `start_date`..`end_date` (default today) as the action response; nothing is stored, so run it
-  from Developer tools → Actions or call it with `return_response`. One API call (one credit,
-  counted in the ledger) per `days_per_call` days (default 31); it is refused when the cycle has
-  too few credits left, waits out the per-minute limit, and on an error returns what it already
-  fetched plus the error. The DAY window limit of the API is not documented: lower
-  `days_per_call` if a window is rejected.
+- `solaredge_v2.export_energy`: fetches the **daily energy** (Wh) from the API for
+  `start_date`..`end_date` into ONE file, `/config/solaredge_v2_export.json`. The file is read
+  first and only the days missing from it are requested (one call = one credit per
+  `days_per_call` days, max 31: the API takes at most 1 month for DAY), and it is saved after
+  every call, so a timeout or an error loses nothing and repeating the action is free for days
+  already there. Today is partial and never stored; a day the API has no value for is stored as
+  `null`. The response lists the file's rows for the range, so run it again later to read what is
+  there. Refused when the cycle has too few credits; waits out the per-minute limit.
 
 ## Cache and credit counter (`.storage`)
 

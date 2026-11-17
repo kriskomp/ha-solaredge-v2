@@ -21,7 +21,11 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    HomeAssistantError,
+    ServiceValidationError,
+)
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_point_in_utc_time
@@ -42,6 +46,7 @@ from .api import (
     parse_telemetry,
     refresh_tokens,
 )
+from .api.models import to_watt_hours
 from .budget import (
     MODE_ADAPTIVE,
     MODE_FIXED,
@@ -71,6 +76,9 @@ from .const import (
     DEFAULT_MONTHLY_CREDITS,
     DEFAULT_RESERVE_PERCENT,
     DOMAIN,
+    EXPORT_MAX_DAYS,
+    EXPORT_RATE_LIMIT_RETRIES,
+    EXPORT_RATE_LIMIT_WAIT,
     GRANT_MONTHS,
     ISSUE_BILLING_DAY,
     ISSUE_CONSENT,
@@ -175,6 +183,7 @@ class SolarEdgeCoordinator(DataUpdateCoordinator[SiteState]):
         )
         self._token: TokenSet = TokenSet.from_dict(entry.data[CONF_TOKEN])
         self._token_lock = asyncio.Lock()
+        self._export_lock = asyncio.Lock()
         self.client = SolarEdgeClient(
             async_get_clientsession(hass), self._access_token, on_send=self._count_call
         )
@@ -623,6 +632,93 @@ class SolarEdgeCoordinator(DataUpdateCoordinator[SiteState]):
             if sample.value is not None and sample.timestamp and sample.timestamp.year < today.year:
                 total += sample.value
         state.totals.set_prior_years(total, today)
+
+    # ------------------------------------------------------------------ export
+
+    async def async_export_energy(
+        self, start: date, end: date, days_per_call: int
+    ) -> dict[str, Any]:
+        """Daily energy for the site days ``start``..``end`` (inclusive), as the API reports it.
+
+        One call per ``days_per_call`` days, each costing one credit; the calls are counted in
+        the same ledger as the polling. Nothing is stored: the caller keeps the answer.
+        A failure part way returns what was fetched plus the error, so the credits spent
+        are not wasted.
+        """
+        today = self.today()
+        if start > end or end > today or (end - start).days >= EXPORT_MAX_DAYS:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="export_range")
+        windows: list[tuple[date, date]] = []
+        day = start
+        while day <= end:
+            last = min(day + timedelta(days=days_per_call - 1), end)
+            windows.append((day, last))
+            day = last + timedelta(days=1)
+        if self.ledger.exhausted or len(windows) > self.credits_remaining:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="export_credits",
+                translation_placeholders={
+                    "calls": str(len(windows)),
+                    "remaining": str(self.credits_remaining),
+                },
+            )
+        values: dict[date, float | None] = {}
+        errors: list[dict[str, str]] = []
+        calls = 0
+        async with self._export_lock:
+            for first, last in windows:
+                frm = self.local_midnight(first)
+                to = min(self.local_midnight(last + timedelta(days=1)), dt_util.utcnow())
+                try:
+                    calls += 1
+                    body = await self._energy_with_retry(frm, to)
+                except SolarEdgeError as err:
+                    errors.append(
+                        {"from": first.isoformat(), "to": last.isoformat(), "error": str(err)}
+                    )
+                    if isinstance(err, SolarEdgeAuthenticationError):
+                        self.config_entry.async_start_reauth(self.hass)
+                    elif isinstance(err, SolarEdgeCreditLimitError):
+                        self.ledger.exhausted = True
+                        self.ledger.used = max(self.ledger.used, self.options.monthly_credits)
+                    break
+                series = Series.from_api(body)
+                unit = series.unit or "WH"  # the request asks for Wh
+                for sample in series.samples:
+                    if sample.timestamp is None:
+                        continue
+                    sample_day = sample.timestamp.astimezone(self.site_tz).date()
+                    if first <= sample_day <= last:
+                        values.setdefault(sample_day, to_watt_hours(sample.value, unit))
+            await self.async_save()
+        if not values and errors:
+            raise HomeAssistantError(errors[0]["error"])
+        return {
+            "site_id": self.site_id,
+            "resolution": "DAY",
+            "unit": "Wh",
+            "start": start.isoformat(),
+            "end": end.isoformat(),
+            "calls": calls,
+            "credits_used": self.ledger.used,
+            "credits_remaining": self.credits_remaining,
+            "total_wh": sum(v for v in values.values() if v is not None),
+            "values": [{"date": d.isoformat(), "wh": values[d]} for d in sorted(values)],
+            "errors": errors,
+        }
+
+    async def _energy_with_retry(self, frm: datetime, to: datetime) -> Any:
+        """GET /energy; waits out the per-minute window instead of failing the whole export."""
+        retries = 0
+        while True:
+            try:
+                return await self.client.energy(self.site_id, "DAY", frm, to)
+            except SolarEdgeRateLimitError as err:
+                retries += 1
+                if retries > EXPORT_RATE_LIMIT_RETRIES:
+                    raise
+                await asyncio.sleep(err.retry_after or EXPORT_RATE_LIMIT_WAIT)
 
     # ------------------------------------------------------------------ issues
 

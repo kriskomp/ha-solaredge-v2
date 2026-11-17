@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import (
+    HomeAssistant,
+    ServiceCall,
+    ServiceResponse,
+    SupportsResponse,
+)
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.storage import Store
@@ -14,10 +19,15 @@ import voluptuous as vol
 from .callback_view import SolarEdgeCallbackView
 from .const import (
     ATTR_CONFIG_ENTRY_ID,
+    ATTR_DAYS_PER_CALL,
+    ATTR_END_DATE,
+    ATTR_START_DATE,
     ATTR_USED,
     CONF_SITE_ID,
     DOMAIN,
+    EXPORT_DEFAULT_DAYS_PER_CALL,
     MANUFACTURER,
+    SERVICE_EXPORT_ENERGY,
     SERVICE_REFRESH,
     SERVICE_SET_CREDITS,
     STORAGE_VERSION,
@@ -55,6 +65,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         except UpdateFailed as err:
             raise HomeAssistantError(str(err)) from err
 
+    async def export_energy(call: ServiceCall) -> ServiceResponse:
+        coordinator = _coordinator(call)
+        return await coordinator.async_export_energy(
+            call.data[ATTR_START_DATE],
+            call.data.get(ATTR_END_DATE) or coordinator.today(),
+            call.data[ATTR_DAYS_PER_CALL],
+        )
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_SET_CREDITS,
@@ -71,6 +89,22 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         SERVICE_REFRESH,
         refresh,
         schema=vol.Schema({vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string}),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_EXPORT_ENERGY,
+        export_energy,
+        schema=vol.Schema(
+            {
+                vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
+                vol.Required(ATTR_START_DATE): cv.date,
+                vol.Optional(ATTR_END_DATE): cv.date,
+                vol.Optional(
+                    ATTR_DAYS_PER_CALL, default=EXPORT_DEFAULT_DAYS_PER_CALL
+                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=366)),
+            }
+        ),
+        supports_response=SupportsResponse.ONLY,
     )
     return True
 

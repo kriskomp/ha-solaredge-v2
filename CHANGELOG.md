@@ -8,6 +8,26 @@ Numeracja wersji: `RRRR.MM.DD.N`. Wydanie na GitHubie powstaje automatycznie po 
 w `manifest.json` na gałęzi `main`, a jego opis to odpowiednia sekcja tego pliku: najpierw po
 angielsku, niżej po polsku.
 
+## 2026.11.17.1
+
+- New action **`solaredge_v2.export_energy`**: returns the daily energy (Wh) the API reports for a
+  range of days as the action response, for checking or backfilling long-term statistics.
+  One credit per block of days (`days_per_call`, default 31), counted in the credit ledger;
+  refused when the cycle has too few credits; waits out the per-minute limit; on an error it
+  returns the days already fetched together with the error. Nothing is stored.
+- The `DAY` resolution of `/energy` and its window limit are not verified against the live API
+  yet; try one month first.
+
+### Polski
+
+- Nowa akcja **`solaredge_v2.export_energy`**: zwraca energię dobową (Wh) z API dla zakresu dni
+  jako odpowiedź akcji, do kontroli albo uzupełnienia statystyk długoterminowych. Jeden kredyt
+  na blok dni (`days_per_call`, domyślnie 31), liczony w liczniku kredytów; odmawia, gdy w cyklu
+  zostało za mało kredytów; czeka na limit na minutę; przy błędzie zwraca pobrane już dni razem
+  z błędem. Nic nie jest zapisywane.
+- Rozdzielczość `DAY` w `/energy` i limit okna nie zostały jeszcze sprawdzone na żywym API;
+  najpierw spróbuj jednego miesiąca.
+
 ## 2026.10.20.1
 
 - Fix: opening the **"Confirm the SolarEdge credit cycle day"** repair ended with

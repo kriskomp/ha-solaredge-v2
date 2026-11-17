@@ -208,6 +208,12 @@
     },
     "entry_not_found": {
       "message": "Wskaż dokładnie jedną instalację SolarEdge (config_entry_id)."
+    },
+    "export_range": {
+      "message": "Zakres musi zaczynać się nie później niż ostatni dzień, kończyć najpóźniej dziś i obejmować mniej niż 3660 dni."
+    },
+    "export_credits": {
+      "message": "Eksport wymaga {calls} wywołań API, a w tym cyklu zostało tylko {remaining} kredytów."
     }
   },
   "issues": {
@@ -263,6 +269,28 @@
         "config_entry_id": {
           "name": "Instalacja",
           "description": "Potrzebne tylko przy więcej niż jednej instalacji."
+        }
+      }
+    },
+    "export_energy": {
+      "name": "Eksport energii dobowej",
+      "description": "Zwraca dobową produkcję energii z API SolarEdge dla zakresu dni jako odpowiedź akcji (nic nie jest zapisywane). Jedno wywołanie na blok dni, każde kosztuje jeden kredyt.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Instalacja",
+          "description": "Potrzebne tylko przy więcej niż jednej instalacji."
+        },
+        "start_date": {
+          "name": "Pierwszy dzień",
+          "description": "Pierwszy dzień instalacji do zwrócenia."
+        },
+        "end_date": {
+          "name": "Ostatni dzień",
+          "description": "Ostatni dzień do zwrócenia (domyślnie dziś, dzień niepełny)."
+        },
+        "days_per_call": {
+          "name": "Dni na wywołanie",
+          "description": "Ile dni prosimy w jednym wywołaniu API (domyślnie 31). Zmniejsz, jeśli API odrzuca okno."
         }
       }
     }
